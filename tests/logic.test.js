@@ -40,3 +40,32 @@ test('el perfil antiguo es compatible al actualizar',()=>{const old={version:4,n
 
 test('las estelas se desbloquean con monedas sin pago doble',()=>{let p=G.freshProfile();p.coins=300;const a=G.buyTrail(p,'mint');assert.equal(a.success,true);assert.equal(a.profile.coins,180);assert.equal(a.profile.selectedTrail,'mint');const b=G.buyTrail(a.profile,'mint');assert.equal(b.profile.coins,180);assert.equal(b.purchased,false);});
 test('las estelas sin monedas no se compran',()=>{const r=G.buyTrail(G.freshProfile(),'galaxy');assert.equal(r.success,false);assert.equal(r.profile.trails.length,1);});
+
+test('hasta 1000 m hay espacio para leer cada encuentro y la sierra se reserva para después',()=>{
+ for(let seed=0;seed<200;seed++){
+  const rng=G.seeded(seed);
+  let height=53.6, previous=0, encounters=0;
+  while(height<=1000){
+   const obstacle=G.obstacle(rng,encounters,0,height,previous);
+   assert.ok(['spring','spike','block'].includes(obstacle.type));
+   const gap=G.gapFor(height,rng);
+   assert.ok(gap>700);
+   previous=height;
+   height+=gap/5;
+   encounters++;
+  }
+  assert.ok(encounters<=7);
+ }
+});
+
+test('las monedas señalan un paso libre alrededor de las cargas y las sierras',()=>{
+ const rng=G.seeded(7);
+ for(const type of ['block','moving','saw']){
+  for(const x of [116,192]){
+   const lane=G.pickupLane({type,x,w:90},rng);
+   const left=type==='saw'?x-33:x;
+   const right=type==='saw'?x+33:x+90;
+   assert.ok(lane+12<left || lane-12>right);
+  }
+ }
+});

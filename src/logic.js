@@ -40,32 +40,40 @@ function claimMission(old,id){
  return p;
 }
 const ROUTE = [
- {at:0,name:'Jardines del aire',type:'spring',hint:'El resorte azul te impulsa.'},
- {at:140,name:'Paso de cristal',type:'spike',hint:'Pasa junto a la pared libre.'},
- {at:480,name:'Puerto de carga',type:'block',hint:'Rodea la caja por un lado.'},
- {at:900,name:'Molino del valle',type:'saw',hint:'Deja espacio entre la sierra y tu pelota.'},
- {at:1400,name:'Andén flotante',type:'moving',hint:'Observa el vaivén antes de subir.'},
- {at:2000,name:'Paso gemelo',type:'double',hint:'Cruza por el centro.'},
- {at:2700,name:'Central de tormentas',type:'beam',hint:'Pasa por fuera del arco eléctrico.'},
- {at:3500,name:'Aguja del cielo',type:'blade',hint:'Deja la cuchilla a un lado.'}
+ {at:0,name:'Jardines del aire',type:'spring',hint:'Cae sobre la hoja para impulsarte.'},
+ {at:250,name:'Paso de cristal',type:'spike',hint:'Pasa junto a la pared libre.'},
+ {at:750,name:'Puerto de carga',type:'block',hint:'Rodea la caja por un lado.'},
+ {at:1500,name:'Molino del valle',type:'saw',hint:'Deja espacio entre la sierra y tu pelota.'},
+ {at:2350,name:'Andén flotante',type:'moving',hint:'Observa el vaivén antes de subir.'},
+ {at:3350,name:'Paso gemelo',type:'double',hint:'Cruza por el centro.'},
+ {at:4500,name:'Central de tormentas',type:'beam',hint:'Pasa por fuera del arco eléctrico.'},
+ {at:5800,name:'Aguja del cielo',type:'blade',hint:'Deja la cuchilla a un lado.'}
 ];
 function stageAt(height){return ROUTE.filter(s=>height>=s.at).pop()||ROUTE[0];}
-function gapFor(height,rng){return Math.max(345,465-height*.045)+rng()*40;}
+function gapFor(height,rng){return Math.max(580,815-height*.045)+rng()*70;}
 function obstacle(rng,index,y,height,previousHeight=height){
  const stage=stageAt(height), known=ROUTE.slice(0,ROUTE.indexOf(stage)+1);
  const type=index===0?'spring':stage.at>previousHeight?stage.type:index%4===0?'spring':known[Math.floor(rng()*known.length)].type;
  const o={type,y,phase:rng()*Math.PI*2,passed:false};
  switch(type){
- case 'spring': Object.assign(o,{x:115+rng()*54,w:76,h:48,used:false}); break;
- case 'spike': Object.assign(o,{side:rng()<.5?'left':'right',w:54,h:47}); break;
- case 'double': Object.assign(o,{w:46,h:41}); break;
- case 'saw': Object.assign(o,{x:126+rng()*108,r:26}); break;
- case 'block': case 'moving': Object.assign(o,{x:116+rng()*76,w:48,h:48,amp:26,speed:.95}); break;
+ case 'spring': Object.assign(o,{x:115+rng()*54,w:72,h:67,used:false}); break;
+ case 'spike': Object.assign(o,{side:rng()<.5?'left':'right',w:58,h:71}); break;
+ case 'double': Object.assign(o,{w:49,h:60}); break;
+ case 'saw': Object.assign(o,{x:126+rng()*108,r:33}); break;
+ case 'block': Object.assign(o,{x:104+rng()*85,w:72,h:66}); break;
+ case 'moving': Object.assign(o,{x:114+rng()*54,w:90,h:49,amp:30,speed:.84}); break;
  case 'beam': Object.assign(o,{x:110+rng()*55,w:83,h:25}); break;
- case 'blade': Object.assign(o,{x:132+rng()*68,w:32,h:65}); break;
+ case 'blade': Object.assign(o,{x:132+rng()*68,w:33,h:79}); break;
  }
  return o;
 }
+function pickupLane(o,rng){
+ if(o.type==='spike')return o.side==='left'?246:114;
+ if(o.type==='spring')return o.x+o.w/2;
+ if(o.type==='double')return 180;
+ const center=o.type==='saw'?o.x:o.x+o.w/2;
+ return center<180?262+rng()*13:85+rng()*13;
+}
 function circleRect(cx,cy,r,x,y,w,h){const nx=clamp(cx,x,x+w),ny=clamp(cy,y,y+h);return(cx-nx)**2+(cy-ny)**2<r*r;}
 function circleCircle(x1,y1,r1,x2,y2,r2){return(x1-x2)**2+(y1-y2)**2<(r1+r2)**2;}
-return{MISSIONS,claimMission,ROUTE,stageAt,gapFor,SKINS,TRAILS,buyTrail,freshProfile,normalizeProfile,nextSkin,progressFor,payout,gainForRun,applyRun,seeded,obstacle,circleRect,circleCircle,clamp};});
+return{pickupLane,MISSIONS,claimMission,ROUTE,stageAt,gapFor,SKINS,TRAILS,buyTrail,freshProfile,normalizeProfile,nextSkin,progressFor,payout,gainForRun,applyRun,seeded,obstacle,circleRect,circleCircle,clamp};});
