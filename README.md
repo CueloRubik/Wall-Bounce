@@ -1,6 +1,6 @@
-# Wall Bounce 1.1.0 · Electron 28
+# Wall Bounce 1.2.0 · Electron 28
 
-Jardines del aire introduce una ruta de ascenso escalonada y una colección ilustrada.
+El cuaderno de ruta permite practicar las ocho estaciones alcanzadas sin gastar monedas ni alterar récords. Los escenarios cambian al llegar al puerto (750 m) y al observatorio (3350 m).
 
 Juego arcade vertical de **un solo toque**, con controles para ratón, teclado y teléfono, 36 pelotas ilustradas, recompensas por partida y progresión sin misiones para desbloquear las pelotas.
 
