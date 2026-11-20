@@ -1,0 +1,50 @@
+{
+  "name": "wall-bounce",
+  "version": "1.0.0",
+  "productName": "Wall Bounce",
+  "private": true,
+  "description": "Wall Bounce, arcade pixel art para macOS Catalina: contenido jugable basado en la version 5.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.js",
+    "check": "node --check main.js && node --check preload.js && node --check src/storage.js && node --check src/logic.js && node --check src/music.js && node --check src/game.js",
+    "build:mac:intel": "electron-builder --mac dmg --x64",
+    "build:mac:universal": "electron-builder --mac dmg --universal",
+    "build:mac": "npm run build:mac:intel",
+    "build:mac:dir": "electron-builder --mac dir --x64"
+  },
+  "devDependencies": {
+    "electron": "28.3.3",
+    "electron-builder": "24.13.3"
+  },
+  "engines": {
+    "node": ">=18 <23"
+  },
+  "build": {
+    "appId": "com.cuelorubik.wallbounce",
+    "productName": "Wall Bounce",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "style.css",
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.games",
+      "icon": "assets/icon.icns",
+      "minimumSystemVersion": "10.15.0",
+      "target": "dmg"
+    },
+    "dmg": {
+      "title": "Wall Bounce ${version}"
+    }
+  }
+}
