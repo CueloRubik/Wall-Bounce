@@ -10,8 +10,31 @@ test('colección completa detiene progreso',()=>{let p=G.freshProfile();p.nextIn
 test('limita datos defectuosos',()=>{const p=G.normalizeProfile({coins:-500,nextIndex:999,progress:111,selected:'missing',volume:300});assert.equal(p.coins,0);assert.equal(p.unlocked.length,36);assert.equal(p.volume,100);assert.equal(p.selected,'classic')});
 test('colisiones',()=>{assert.equal(G.circleCircle(0,0,3,5,0,3),true);assert.equal(G.circleRect(0,0,3,20,20,4,4),false)});
 
-test('primer obstáculo es plataforma beneficiosa y dificultad inicial suave',()=>{const rng=G.seeded(141);assert.equal(G.obstacle(rng,0,260,0).type,'spring');for(let i=1;i<4;i++){const o=G.obstacle(rng,i,100,0);assert.ok(['spring','spike'].includes(o.type));if(o.type==='spike')assert.ok(o.w<=26);}});
-test('los obstáculos avanzados solo aparecen al aumentar los puntos',()=>{const rng=G.seeded(321);let easy=new Set(),hard=new Set();for(let i=0;i<100;i++){easy.add(G.obstacle(rng,7,100,0).type);hard.add(G.obstacle(rng,7,100,610).type);}assert.equal(easy.has('double'),false);assert.equal(easy.has('blade'),false);assert.equal(hard.has('double'),true);assert.equal(hard.has('blade'),true);});
+test('cada peligro tiene una introducción y solo aparece después de su tramo',()=>{
+ for(let seed=1;seed<=100;seed++){
+  const rng=G.seeded(seed);
+  let height=54,previous=0;
+  for(let row=0;height<=5000;row++){
+   const obstacle=G.obstacle(rng,row,0,height,previous);
+   const stage=G.stageAt(height);
+   assert.ok(G.ROUTE.slice(0,G.ROUTE.indexOf(stage)+1).some(s=>s.type===obstacle.type));
+   if(stage.at>previous)assert.equal(obstacle.type,stage.type);
+   else if(row%4===0)assert.equal(obstacle.type,'spring');
+   const gap=G.gapFor(height,rng);
+   assert.ok(gap>=345);
+   previous=height;
+   height+=gap/5;
+  }
+ }
+});
+test('las misiones conservan el progreso anterior y se cobran una sola vez',()=>{
+ const old={high:150,coins:10};
+ assert.equal(G.claimMission(old,'flight').coins,10);
+ const paid=G.claimMission(old,'landing');
+ assert.equal(paid.coins,45);
+ assert.equal(G.claimMission(JSON.parse(JSON.stringify(paid)),'landing').coins,45);
+ assert.equal(G.claimMission(paid,'unknown').coins,45);
+});
 test('los eventos de estrellas dan premios en Documentos sin reclamar manualmente',()=>{const p=G.freshProfile();p.totalStars=11;const result=G.applyRun(p,{score:10,stars:2,picked:0});assert.equal(result.eventReward,80);assert.equal(result.profile.totalStars,13);assert.equal(result.profile.coins,result.earned+80);});
 test('el perfil antiguo es compatible al actualizar',()=>{const old={version:4,nextIndex:5,progress:51,selected:'donut',coins:125,high:240};const now=G.normalizeProfile(old);assert.equal(now.selected,'donut');assert.equal(now.progress,51);assert.equal(now.coins,125);assert.equal(now.totalStars,0);});
 

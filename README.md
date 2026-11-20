@@ -1,12 +1,12 @@
-# Wall Bounce 1.0.0 · Electron 28
+# Wall Bounce 1.1.0 · Electron 28
 
-Version inicial 1.0.0 del repositorio basada en el contenido jugable de Wall Bounce 5.0.
+Jardines del aire introduce una ruta de ascenso escalonada y una colección ilustrada.
 
-Juego arcade vertical de **un solo toque**, con controles para ratón, teclado y teléfono, 36 pelotas pixel art, recompensas por partida y progresión sin misiones para desbloquear las pelotas.
+Juego arcade vertical de **un solo toque**, con controles para ratón, teclado y teléfono, 36 pelotas ilustradas, recompensas por partida y progresión sin misiones para desbloquear las pelotas.
 
 ## Instalación en macOS Catalina
 
-Requiere **Node.js 18** y conexión durante la primera instalación de Electron. Descomprime el ZIP y entra en la carpeta `Wall-Bounce-v5`:
+Requiere **Node.js 18** y conexión durante la primera instalación de Electron. Descomprime el ZIP y entra en la carpeta que contiene `package.json`:
 
 ```bash
 npm install
@@ -22,7 +22,7 @@ npm start
 - **Inicio accesible**: velocidad lateral más lenta, espacios amplios y primera plataforma de supersalto. La dificultad aumenta gradualmente según la puntuación, y aparecen nuevos tipos de obstáculo.
 - **Obstáculos**: pinchos de cristal, bloques, sierras, plataformas móviles, cuchillas y barras de energía.
 - **Ayudas y premios**: plataformas de supersalto, monedas, estrellas y burbujas-escudo que absorben una colisión.
-- **Ambientación**: tres paisajes pixel art, animación de giro leve, rebote deformable, estelas coloreadas y partículas.
+- **Ambientación**: valle pintado con luz que cambia al subir, animación de giro leve, rebote deformable, estelas coloreadas y partículas.
 
 ## Progresión
 
@@ -31,7 +31,7 @@ Las **36 pelotas** se desbloquean **únicamente por porcentaje acumulado en part
 Además de las pelotas:
 
 - **Festival de estrellas**: cada 12 estrellas recolectadas en partidas entrega automáticamente 80 monedas, sin fechas límite.
-- **Logros permanentes**: metas personales por puntuación, partidas, estrellas y rebotes.
+- **Misiones permanentes**: reclama monedas por altura, partidas, estrellas y rebotes desde el campamento. Los logros del perfil anterior cuentan para sus recompensas.
 - **Estelas cosméticas**: cinco diseños, el primero gratuito y los demás obtenibles con monedas ganadas jugando. No hay compras con dinero real.
 - **Récords, estadísticas y preferencias** persistentes.
 
