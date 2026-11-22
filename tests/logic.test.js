@@ -19,7 +19,7 @@ test('cada peligro tiene una introducción y solo aparece después de su tramo',
    const stage=G.stageAt(height);
    assert.ok(G.ROUTE.slice(0,G.ROUTE.indexOf(stage)+1).some(s=>s.type===obstacle.type));
    if(stage.at>previous)assert.equal(obstacle.type,stage.type);
-   else if(row%4===0)assert.equal(obstacle.type,'spring');
+   if(row===0)assert.equal(obstacle.type,'spike');
    const gap=G.gapFor(height,rng);
    assert.ok(gap>=345);
    previous=height;
@@ -40,3 +40,45 @@ test('el perfil antiguo es compatible al actualizar',()=>{const old={version:4,n
 
 test('las estelas se desbloquean con monedas sin pago doble',()=>{let p=G.freshProfile();p.coins=300;const a=G.buyTrail(p,'mint');assert.equal(a.success,true);assert.equal(a.profile.coins,180);assert.equal(a.profile.selectedTrail,'mint');const b=G.buyTrail(a.profile,'mint');assert.equal(b.profile.coins,180);assert.equal(b.purchased,false);});
 test('las estelas sin monedas no se compran',()=>{const r=G.buyTrail(G.freshProfile(),'galaxy');assert.equal(r.success,false);assert.equal(r.profile.trails.length,1);});
+
+test('hasta 1000 m hay entre 8 y 11 encuentros y un solo trampolín de introducción',()=>{
+ for(let seed=0;seed<200;seed++){
+  const rng=G.seeded(seed);
+  let previous=0,h=53.6,index=0,last=-100,springs=0;
+  while(h<=1000){
+   const o=G.obstacle(rng,index,0,h,previous,last);
+   if(o.type==='spring'){assert.ok(index-last>=8);last=index;springs++;}
+   const gap=G.gapFor(h,rng);assert.ok(gap>=440 && gap<=612);
+   previous=h;h+=gap/5;index++;
+  }
+  assert.ok(index>=8 && index<=11);assert.equal(springs,1);
+ }
+});
+test('el encargo guarda la mejor marca y paga solo la primera entrega',()=>{
+ const job=G.JOBS[0], first=G.settleJob({coins:5},job,22.5);
+ assert.equal(first.profile.coins,5+job.reward);
+ const next=G.settleJob(first.profile,job,19.25);
+ assert.equal(next.reward,0);assert.equal(next.profile.records[job.id],19250);
+ assert.equal(G.settleJob(next.profile,job,28).profile.records[job.id],19250);
+ assert.deepEqual(G.normalizeProfile({high:100}).records,{});
+});
+test('el giro invierte su dirección gradualmente al rebotar',()=>{
+ const b={vx:150,r:12,spin:0,angle:0};
+ for(let n=0;n<120;n++)G.roll(b,1/120);
+ assert.ok(b.spin>4 && b.spin<6);
+ b.vx=-150;G.roll(b,1/120);assert.ok(b.spin>0);
+ for(let n=0;n<120;n++)G.roll(b,1/120);
+ assert.ok(b.spin<0);
+});
+
+test('las monedas señalan un paso libre alrededor de las cargas y las sierras',()=>{
+ const rng=G.seeded(7);
+ for(const type of ['block','moving','saw']){
+  for(const x of [116,192]){
+   const lane=G.pickupLane({type,x,w:90},rng);
+   const left=type==='saw'?x-33:x;
+   const right=type==='saw'?x+33:x+90;
+   assert.ok(lane+12<left || lane-12>right);
+  }
+ }
+});

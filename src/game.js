@@ -6,29 +6,22 @@
   const overlay = document.querySelector('#overlay');
   const W = 360, H = 640, LEFT = 36, RIGHT = 324;
   const images = {};
-  const assets = ['wall','block','saw','coin','spikes-left','spikes-right','spring','star','shield','beam','blade','sky',
+  const assets = ['mailbag','wall','block','saw','coin','spikes-left','spikes-right','spring','star','shield','beam','blade','sky','station','harbor','observatory','moving',
     ...G.SKINS.map(s => `ball-${s.id}`)];
   assets.forEach(id => {
     const img = new Image();
-    img.src = id.startsWith('ball-') ? `assets/balls/${id.substring(5)}.png` : id === 'sky' ? 'assets/sky.webp' : `assets/${id}.png`;
+    img.src = id.startsWith('ball-') ? `assets/balls/${id.substring(5)}.png` : ['sky','station','harbor','observatory'].includes(id) ? `assets/${id}.webp` : `assets/${id}.png`;
     images[id] = img;
   });
-  function resizeCanvas(){
-    const scale=Math.min(window.devicePixelRatio||1,2);
-    const width=Math.round(canvas.clientWidth*scale), height=Math.round(canvas.clientHeight*scale);
-    if(width && height){
-      canvas.width=width;canvas.height=height;
-      ctx.setTransform(width/W,0,0,height/H,0,0);
-      ctx.imageSmoothingEnabled=true;
-    }
-  }
-  new ResizeObserver(resizeCanvas).observe(canvas);
-  resizeCanvas();
+  // Keep a single native drawing grid at every window size.
+  ctx.imageSmoothingEnabled = false;
   let profile = G.freshProfile();
   let mode = 'loading';
   let result = null;
   let run = null;
-  let lastFrame = 0;
+  let lastFrame = null;
+  let accumulator = 0;
+  const step = 1 / 120;
   let clock = 0;
   let animationEpoch = 0;
   let banner = null;
@@ -69,6 +62,7 @@
     const tile=document.createElement('canvas');
     tile.width=40;tile.height=32;
     const paint=tile.getContext('2d');
+    paint.imageSmoothingEnabled=false;
     paint.drawImage(star,0,0,40,32);
     paint.globalCompositeOperation='source-atop';
     paint.globalAlpha=.65;
@@ -81,13 +75,17 @@
     ctx.fillStyle = color;
     ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(w), Math.ceil(h));
   }
-  function startGame() {
-    rng = G.seeded((Math.random() * 0xFFFFFFFF) >>> 0);
+  function startGame(practiceIndex = null, job = null) {
+    const startHeight = practiceIndex === null ? 0 : G.ROUTE[practiceIndex].at;
+    clock = 0;
+    accumulator = 0;
+    rng = G.seeded(job?.seed ?? ((Math.random() * 0xFFFFFFFF) >>> 0));
     run = {
-      score: 0, picked: 0, stars: 0, shield: 0, wallBounces: 0, avoided: 0,
+      job, elapsed:0, parcels:0, lastSpring:-100, nextTap:0, boost:0,
+      practiceIndex, startHeight, score: startHeight, picked: 0, stars: 0, shield: 0, wallBounces: 0, avoided: 0,
       balls: [], obstacles: [], pickups: [], particles: [],
-      lastHeight: 0, started: false, nextY: 220, spawned: 0, camera: 0, shake: 0, flash: 0,
-      ball: {x: 176, y: 488, vx: 137, vy: -125, r: 12, inv: 1.3, trail: [], angle: 0, impact: 0}
+      lastHeight: startHeight, started: false, nextY: 220, spawned: 0, camera: 0, shake: 0, flash: 0,
+      ball: {x: 176, y: 488, vx: 122, vy: -125, r: 12, inv: 1.3, trail: [], angle: 0, spin: 0, impact: 0}
     };
     while (run.nextY > -140) spawnObstacle();
     banner = null;
@@ -98,12 +96,20 @@
     Music.play('level');
   }
   function spawnObstacle() {
-    const height = (488 - run.nextY) / 5;
-    const o = G.obstacle(rng, run.spawned, run.nextY, height, run.lastHeight);
+    const height = run.startHeight + (488 - run.nextY) / 5;
+    const firstPractice = run.practiceIndex !== null && run.spawned === 0;
+    const o = G.obstacle(rng, firstPractice ? 1 : run.spawned, run.nextY, height,
+      firstPractice ? run.startHeight - 1 : run.lastHeight, run.lastSpring);
+    if(o.type==='spring')run.lastSpring=run.spawned;
     run.lastHeight = height;
     run.obstacles.push(o);
-    const kind = run.spawned % 11 === 9 ? 'shield' : run.spawned % 4 === 2 ? 'star' : 'coin';
-    run.pickups.push({kind, x: 100 + rng() * 160, y: o.y + 128, taken: false});
+    const kind = run.job?.id==='post' && run.spawned%3!==2 ? 'mailbag' : run.spawned % 11 === 9 ? 'shield' : run.spawned % 4 === 2 ? 'star' : 'coin';
+    const lane=G.pickupLane(o,rng);
+    run.pickups.push({kind,x:lane,y:o.y+118,taken:false});
+    if(kind==='coin' && run.spawned%3===1){
+      const approach=lane+(180-lane)*.45;
+      run.pickups.push({kind:'coin',x:approach,y:o.y+174,taken:false});
+    }
     run.nextY -= G.gapFor(height,rng);
     run.spawned++;
   }
@@ -128,10 +134,10 @@
     if (!run || profile.reducedFx) return;
     for (let i = 0; i < count; i++) {
       run.particles.push({
-        x, y, vx: (rng() - .5) * speed * 2,
-        vy: (rng() - .5) * speed * 2,
-        size: 2 + Math.round(rng() * 3),
-        life: .28 + rng() * .3,
+        x, y, vx: (Math.random() - .5) * speed * 2,
+        vy: (Math.random() - .5) * speed * 2,
+        size: 2 + Math.round(Math.random() * 3),
+        life: .28 + Math.random() * .3,
         max: .58, color
       });
     }
@@ -143,8 +149,9 @@
       run.started = true;
       document.querySelector('.launch-tip')?.remove();
     }
-    b.vy = -376;
-    b.angle += (b.vx > 0 ? .18 : -.18);
+    if(run.elapsed + 1e-6 < run.nextTap)return;
+    run.nextTap=run.elapsed+.24;
+    b.vy = Math.min(b.vy, -376);
     emit(b.x, b.y + run.camera, '#be88ff', 9, 82);
     Music.play('jump');
   }
@@ -157,7 +164,7 @@
     if (['Space','ArrowUp','Escape'].includes(event.code) && ['playing','pause','menu'].includes(mode)) event.preventDefault();
     if (event.code === 'Escape') {
       if (mode === 'playing' || mode === 'pause') pause();
-      else if (mode === 'skins' || mode === 'settings' || mode === 'unlocked' || mode === 'events') menu();
+      else if (mode === 'skins' || mode === 'settings' || mode === 'unlocked' || mode === 'events' || mode === 'route' || mode === 'practiceEnd' || mode === 'jobs' || mode === 'jobEnd') menu();
     } else if ((event.code === 'Space' || event.code === 'ArrowUp') && !event.repeat) {
       if (mode === 'playing') impulse();
       else if (mode === 'menu') startGame();
@@ -166,12 +173,20 @@
   window.addEventListener('blur', () => { if (mode === 'playing') pause(); Music.suspend(); });
   window.addEventListener('focus', () => { Music.sync(mode,profile.music,profile.volume,profile.sound); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'playing') pause(); });
-  overlay.addEventListener('click',event=>{
+  document.getElementById('shell').addEventListener('click',event=>{
     const button=event.target.closest('button[data-action]');if(!button)return;
     event.stopPropagation();
     Music.activate(mode,profile.music,profile.volume,profile.sound);
     const action=button.dataset.action;
-    if(action==='play'||action==='retry')startGame();
+    if(action==='play')startGame();
+    else if(action==='retry')startGame(run?.practiceIndex ?? null,run?.job ?? null);
+    else if(action==='jobs'){run=null;mode='jobs';renderUI();}
+    else if(action==='job'){const job=G.JOBS.find(j=>j.id===button.dataset.id);if(job)startGame(null,job);}
+    else if(action==='route'){mode='route';renderUI();}
+    else if(action==='practice'){
+      const index=Number(button.dataset.index);
+      if(G.ROUTE[index] && profile.high>=G.ROUTE[index].at)startGame(index);
+    }
     else if(action==='pause'||action==='resume')pause();
     else if(action==='menu')menu();
     else if(action==='skins'){mode='skins';inspected=profile.selected;collectionFilter='all';scrollPosition=0;renderUI();}
@@ -187,7 +202,6 @@
     else if(action==='trailBuy'){const ans=G.buyTrail(profile,button.dataset.trail);if(ans.success){profile=ans.profile;saveProfile();Music.play('unlock');}else Music.play('tap');renderUI();}
     else if(action==='sound'){profile.sound=!profile.sound;saveProfile();renderUI();}
     else if(action==='music'){profile.music=!profile.music;saveProfile();renderUI();}
-    else if(action==='volume'){profile.volume=G.clamp(profile.volume+Number(button.dataset.change),0,100);saveProfile();renderUI();}
     else if(action==='effects'){profile.reducedFx=!profile.reducedFx;saveProfile();renderUI();}
     else if(action==='folder'){if(window.wallBounceStorage)window.wallBounceStorage.openFolder().catch(console.error);}
     else if(action==='filter'){collectionFilter=button.dataset.filter;scrollPosition=0;renderUI();}
@@ -204,31 +218,44 @@
     if(action!=='play'&&action!=='retry'&&action!=='equip'&&action!=='showUnlock')Music.play('tap');
   });
 
+  overlay.addEventListener('input', event=>{
+    if(event.target.id!=='volume-slider')return;
+    profile.volume=Number(event.target.value);
+    document.getElementById('volume-value').textContent=profile.volume+'%';
+    Music.sync(mode,profile.music,profile.volume,profile.sound);
+  });
+  overlay.addEventListener('change',event=>{if(event.target.id==='volume-slider')saveProfile();});
   function collision(o, b) {
     const r = b.r - 4;
     if (o.type === 'spring') return false;
-    if (o.type === 'beam' || o.type === 'blade') return G.circleRect(b.x,b.y,r,o.x+5,o.y+4,o.w-10,o.h-8);
-    if (o.type === 'spike') {
-      const x = o.side === 'left' ? LEFT : RIGHT - o.w;
-      return G.circleRect(b.x, b.y, r, x + 3, o.y + 3, o.w - 6, o.h - 6);
-    }
-    if (o.type === 'double') {
-      return G.circleRect(b.x, b.y, r, LEFT + 4, o.y + 3, o.w - 7, o.h - 6) ||
-        G.circleRect(b.x, b.y, r, RIGHT - o.w + 3, o.y + 3, o.w - 7, o.h - 6);
-    }
-    if (o.type === 'block') return G.circleRect(b.x, b.y, r, o.x + 3, o.y + 3, o.w - 6, o.h - 6);
-    if (o.type === 'moving') {
-      const x = o.x + Math.sin(clock * o.speed + o.phase) * o.amp;
-      return G.circleRect(b.x, b.y, r, x + 3, o.y + 3, o.w - 6, o.h - 6);
-    }
-    return G.circleCircle(b.x, b.y, r, o.x, o.y + o.r, o.r - 2);
+    if (o.type === 'saw') return G.circleCircle(b.x,b.y,r,o.x,o.y+o.r,o.r-2);
+    const hits = (id,x) => G.hitsSprite(hazardMasks[id],b.x,b.y,r,Math.round(x),o.y,o.w,o.h);
+    if (o.type === 'double') return hits('spikes-left',LEFT) || hits('spikes-right',RIGHT-o.w);
+    if (o.type === 'spike') return hits('spikes-'+o.side,o.side==='left' ? LEFT : RIGHT-o.w);
+    const x = o.type==='moving' ? o.x+Math.sin(clock*o.speed+o.phase)*o.amp : o.x;
+    return hits(o.type,x);
   }
-  function finish() {
+  function finishJob(won,reason){
+    run.reason=reason;
+    run.won=won;
+    run.reward=0;
+    if(won){
+      const outcome=G.settleJob(profile,run.job,run.elapsed);
+      profile=outcome.profile;run.reward=outcome.reward;saveProfile();
+    }
+    mode='jobEnd';Music.play(won?'unlock':'hit');renderUI();
+  }
+  function finish(reason) {
     if (mode !== 'playing' || !run) return;
     const b = run.ball;
     emit(b.x, b.y + run.camera, '#ff66bf', 28, 150);
     run.shake = 9;
     run.flash = .15;
+    run.reason=reason;
+    if(run.job){finishJob(false,reason);return;}
+    if(run.practiceIndex!==null){
+      mode='practiceEnd';Music.play('hit');renderUI();return;
+    }
     const computed = G.applyRun(profile, run);
     const ready = G.MISSIONS.filter(m=>profile[m.stat]<m.need && computed.profile[m.stat]>=m.need);
     profile = computed.profile;
@@ -255,28 +282,21 @@
     run.particles = run.particles.filter(p => p.life > 0).slice(-180);
     if (mode !== 'playing' || !run.started) return;
     const b = run.ball;
+    run.elapsed+=dt;
+    run.boost=Math.max(0,run.boost-dt);
+    if(run.job && run.elapsed>run.job.limit+1e-6){finishJob(false,'Se acabó el tiempo.');return;}
     b.inv = Math.max(0, b.inv - dt);
     b.impact = Math.max(0, (b.impact || 0) - dt * 8);
-    const speed = 137 + Math.min(55, run.score * .024);
-    b.vx = Math.sign(b.vx || 1) * speed;
+    const speed = 152 + Math.min(52, run.score * .041);
+    b.vx = Math.sign(b.vx || 1) * Math.min(speed,Math.abs(b.vx)+58*dt);
     b.vy = Math.min(270, b.vy + 515 * dt);
-    b.angle += dt * (b.vx > 0 ? 1.45 : -1.45);
+    G.roll(b,dt);
     const previousX = b.x;
     const previousY = b.y;
     b.x += b.vx * dt;
     b.y += b.vy * dt;
-    if (b.x + b.r >= RIGHT) {
-      b.x = RIGHT - b.r;
-      b.vx = -speed;
-      run.wallBounces++;
-      b.impact = 1;
-      emit(b.x, b.y + run.camera, '#63ecff', 11);
-      run.shake = profile.reducedFx ? 0 : 2;
-      Music.play('bounce');
-    }
-    if (b.x - b.r <= LEFT) {
-      b.x = LEFT + b.r;
-      b.vx = speed;
+    if (G.reflectWall(b, LEFT, RIGHT)) {
+      b.vx*=.94;
       run.wallBounces++;
       b.impact = 1;
       emit(b.x, b.y + run.camera, '#63ecff', 11);
@@ -284,17 +304,17 @@
       Music.play('bounce');
     }
     run.camera = Math.max(run.camera, 310 - b.y);
-    const newScore = Math.max(run.score, Math.floor((488 - b.y) / 5));
+    const newScore = Math.max(run.score, run.startHeight + Math.floor((488 - b.y) / 5));
     if (newScore !== run.score) {
       const stage = G.stageAt(newScore + 45);
       if(stage !== G.stageAt(run.score + 45)) banner={text:stage.hint,until:clock+3};
       run.score = newScore;
       const zone=document.getElementById('hud-zone');
-      if(zone)zone.textContent=G.stageAt(newScore).name;
+      if(zone)zone.textContent=(run.practiceIndex!==null?'Práctica · ':'')+G.stageAt(newScore).name;
       const hud = document.getElementById('hud-score');
       if (hud) hud.textContent = run.score;
     }
-    if (b.y + run.camera > H + 22) { finish(); return; }
+    if (b.y + run.camera > H + 22) { finish('La pelota cayó por debajo de la pantalla.'); return; }
     // La trayectoria se comprueba en pequeños segmentos para no atravesar obstáculos a gran velocidad.
     const steps = Math.max(1, Math.ceil(Math.hypot(b.x - previousX, b.y - previousY) / 5));
     for (const o of run.obstacles) {
@@ -303,11 +323,11 @@
         const surface=o.y+5;
         if (!o.used && b.vy>0 && previousY+b.r<=surface && b.y+b.r>=surface &&
             b.x+b.r>o.x+5 && b.x-b.r<o.x+o.w-5){
-          o.used=true;o.hitAt=clock;b.y=surface-b.r;b.vy=-480;
+          o.used=true;o.hitAt=clock;b.y=surface-b.r;b.vy=-835;run.boost=1.85;
           emit(b.x,b.y+run.camera,'#adf7fc',18,85);
-          Music.play('spring');banner={text:'¡SUPERSALTO!',until:clock+1.0};
+          Music.play('spring');banner={text:'Lanzamiento protegido',until:clock+1.0};
         }
-      } else if (b.inv <= 0) {
+      } else if (b.inv <= 0 && run.boost <= 0) {
         for (let i = 1; i <= steps; i++) {
           const sample = {x: previousX + (b.x - previousX) * i / steps,
             y: previousY + (b.y - previousY) * i / steps, r: b.r};
@@ -315,7 +335,7 @@
             if (run.shield>0) {run.shield--;document.getElementById('hud-shield').hidden=true;b.inv=.95;b.vy=-300;
               emit(b.x,b.y+run.camera,'#7cfcf8',23,120);
               banner={text:'¡ESCUDO ACTIVADO!',until:clock+1.2};Music.play('shield');break;
-            } else { finish();return; }
+            } else { finish(G.ROUTE.find(stage=>stage.type===o.type).hint);return; }
           }
         }
       }
@@ -332,6 +352,7 @@
       if (p.taken) continue;
       if (G.circleCircle(b.x, b.y, b.r + 2, p.x, p.y, p.kind==='shield'?15:12)) {
         p.taken=true;
+        if(p.kind==='mailbag'){run.parcels++;Music.play('coin');}
         if(p.kind==='coin'){run.picked++;Music.play('coin');}
         if(p.kind==='star'){run.stars++;Music.play('star');banner={text:'+1 estrella',until:clock+.8};}
         if(p.kind==='shield'){run.shield=1;Music.play('shield');banner={text:'¡ESCUDO!',until:clock+.8};}
@@ -341,7 +362,15 @@
         const shield=document.getElementById('hud-shield');if(shield)shield.hidden=!run.shield;
       }
     }
-    b.trail.unshift({x: b.x, y: b.y});
+    if(run.job){
+      const progress=run.job.id==='post' ? run.parcels : run.score;
+      if(progress>=run.job.target){finishJob(true,'Encargo entregado');return;}
+      const readout=document.getElementById('job-hud');
+      const message=jobHud();
+      if(readout && readout.textContent!==message)readout.textContent=message;
+    }
+    const tail = b.trail[0];
+    if (!tail || Math.hypot(b.x-tail.x,b.y-tail.y)>=5) b.trail.unshift({x:b.x,y:b.y});
     if (b.trail.length > 13) b.trail.pop();
     run.obstacles = run.obstacles.filter(o => o.y + run.camera <= H + 100);
     run.pickups = run.pickups.filter(p => !p.taken && p.y + run.camera <= H + 60);
@@ -351,13 +380,10 @@
   function drawBackground() {
     const offset=run ? run.camera : 0;
     rect(0,0,W,H,'#ecd8b5');
-    const bg=asset('sky');
+    const backdrop= !run ? 'station' : run.score>=2200 ? 'observatory' : run.score>=390 ? 'harbor' : 'sky';
+    const bg=asset(backdrop)||asset('sky');
     if(bg)ctx.drawImage(bg,0,-40+Math.min(40,offset*.012),W,H+40);
     if (!run) return;
-    const sunset=Math.min(.19,Math.max(0,(run.score-480)/6000));
-    const dusk=Math.min(.22,Math.max(0,(run.score-1800)/7000));
-    if(sunset)rect(0,0,W,H,`rgba(234,125,85,${sunset})`);
-    if(dusk)rect(0,0,W,H,`rgba(51,62,108,${dusk})`);
     const tile=140, shift=offset%tile;
     for(let y=shift-tile;y<H;y+=tile){
       sprite('wall',0,y,LEFT,tile+1);
@@ -384,8 +410,7 @@
       sprite('block', o.x, y, o.w, o.h);
     } else if (o.type === 'moving') {
       const x = o.x + Math.sin(clock * o.speed + o.phase) * o.amp;
-      ctx.save();ctx.globalAlpha=.26;sprite('block',x-6,y, o.w,o.h);ctx.restore();
-      sprite('block', x, y, o.w, o.h);
+      sprite('moving', x, y, o.w, o.h);
     } else if (o.type === 'saw') {
       ctx.save();
       ctx.translate(Math.round(o.x), Math.round(y + o.r));
@@ -400,19 +425,17 @@
     if (img) {
       ctx.save();
       const impact = run && mode === 'playing' ? (run.ball.impact || 0) : 0;
-      ctx.translate(x,y);
-      ctx.rotate(run && mode === 'playing' ? Math.sin(run.ball.angle) * .14 : Math.sin(clock*.8)*.05);
+      ctx.translate(Math.round(x),Math.round(y));
+      ctx.rotate(run ? run.ball.angle : 0);
       ctx.scale(1+impact*.16,1-impact*.13);
-      ctx.imageSmoothingEnabled=true;
       ctx.drawImage(img,-s/2,-s/2,s,s);
-      ctx.imageSmoothingEnabled=true;
       ctx.restore();
     }
 
   }
   function draw() {
     ctx.save();
-    if (run && run.shake && !profile.reducedFx) ctx.translate(Math.round((rng() - .5) * run.shake), Math.round((rng() - .5) * run.shake));
+    if (run && run.shake && !profile.reducedFx) ctx.translate(Math.round((Math.random() - .5) * run.shake), Math.round((Math.random() - .5) * run.shake));
     drawBackground();
     if (run) {
       const cam = run.camera;
@@ -424,7 +447,7 @@
       for (const p of run.pickups) {
         if (!p.taken && p.y + cam > -20 && p.y + cam < H + 20) {
           const yy = p.y + cam + Math.sin(clock * 5 + p.x) * 3;
-          sprite(p.kind==='star'?'star':p.kind==='shield'?'shield':'coin',p.x-13,yy-13,26,26);
+          sprite(p.kind,p.x-13,yy-13,26,26);
         }
       }
       const b = run.ball;
@@ -440,7 +463,11 @@
             if(spark)ctx.drawImage(spark,item.x-size/2,item.y+cam-size/2,size,size*.8);
           });ctx.globalAlpha=1;
         }
-        if (!run.started || b.inv <= 0 || Math.floor(clock * 8) % 2 === 0) {
+        if(run.boost>0){
+          ctx.save();ctx.globalAlpha=.74;ctx.strokeStyle=run.boost<.35?'#ffd472':'#85efdf';ctx.lineWidth=2;ctx.beginPath();ctx.arc(Math.round(b.x),Math.round(b.y+cam),20,0,Math.PI*2);ctx.stroke();ctx.restore();
+          sprite('shield',b.x+10,b.y+cam-21,14,14);
+        }
+        if (run.boost>0 || !run.started || b.inv <= 0 || Math.floor(clock * 8) % 2 === 0) {
           drawBall(b.x, b.y + cam, `ball-${profile.selected}`);
         }
       }
@@ -466,40 +493,84 @@
       ctx.fillText(banner.text,180,109,285);
     }
   }
+  function jobHud(){
+    const goal=run.job.id==='post' ? run.parcels+'/'+run.job.target+' sacas' : run.score+'/'+run.job.target+' m';
+    return goal+' · '+Math.max(0,Math.ceil(run.job.limit-run.elapsed))+' s';
+  }
   function ballSrc(id){return `assets/balls/${id}.png`;}
   function icon(name){return `<img class="art-icon" src="assets/${name}.png" alt="">`;}
   function coinIcon(){return '<img class="coin-icon" src="assets/coin.png" alt="monedas">';}
+  const dock = document.getElementById('dock');
+  const destinations = [
+    ['menu', '', 'missions', 'Inicio'],
+    ['skins', '', 'nav-collection', 'Pelotas'],
+    ['events', 'missions', 'nav-journal', 'Misiones'],
+    ['events', 'trails', 'nav-shop', 'Tienda'],
+    ['settings', '', 'nav-tools', 'Ajustes']
+  ];
+  function updateDock(){
+    dock.hidden = !['menu','skins','events','settings','route','jobs'].includes(mode);
+    if (dock.hidden) return;
+    const ready = G.MISSIONS.filter(m => profile[m.stat] >= m.need && !profile.claimed.includes(m.id)).length;
+    dock.innerHTML = destinations.map(([action,tab,art,label]) => {
+      const current = action === mode && (!tab || tab === eventTab || (tab === 'missions' && eventTab === 'event'));
+      const badge = tab === 'missions' && ready ? `<sup>${ready}</sup>` : '';
+      return `<button data-action="${action}" data-tab="${tab}" ${current ? 'aria-current="page"' : ''}>${icon(art)}<span>${label}</span>${badge}</button>`;
+    }).join('');
+  }
   function renderUI(){
+    updateDock();
     animationEpoch++;
     const epoch=animationEpoch;
+    document.getElementById('shell').dataset.view=mode;
     Music.sync(mode,profile.music,profile.volume,profile.sound);
     if(mode==='loading'){overlay.innerHTML='<div class="loading">CARGANDO...</div>';return;}
     if(mode==='playing'){
       overlay.innerHTML=`<div class="hud"><span class="hud-coins">${coinIcon()} <b id="hud-pickups">${run.picked}</b></span>
-      <div class="hud-score"><small id="hud-zone">${G.stageAt(run.score).name}</small><strong><span id="hud-score">${run.score}</span> m</strong></div>
+      <div class="hud-score"><small id="hud-zone">${run.practiceIndex!==null?'Práctica · ':''}${G.stageAt(run.score).name}</small><strong><span id="hud-score">${run.score}</span> m</strong></div>
       <span class="hud-stars">${icon('star')} <b id="hud-stars">${run.stars}</b><img id="hud-shield" src="assets/shield.png" alt="Escudo activo" ${run.shield?'':'hidden'}></span>
       <button class="hud-pause" data-action="pause" aria-label="Pausar partida">${icon('pause')}</button></div>
-      ${run.started?'':'<div class="launch-tip"><b>Toca para dar el primer salto</b><small>Sigue tocando para subir. También puedes usar Espacio.</small></div>'}`;
+      ${run.job?`<div class="job-hud" id="job-hud">${jobHud()}</div>`:''}
+      ${run.started?'':'<div class="launch-tip"><b>Toca para dar el primer salto</b><small>Cada toque te impulsa. Rebotas solo en las paredes. También funciona con Espacio.</small></div>'}`;
       return;
     }
     if(mode==='menu'){
       const next=G.nextSkin(profile);
       const percentage=next?profile.progress:100;
+      const nextStop=G.ROUTE.find(stage=>stage.at>profile.high);
+
       overlay.innerHTML=`<section class="menu-screen">
         <header class="menu-top"><span class="pill">${coinIcon()} ${profile.coins}</span><span class="pill">${icon('trophy')} Récord · ${profile.high} m</span></header>
         <div class="menu-hero"><h1 class="logo-text"><span>Wall</span><strong>Bounce</strong></h1>
         <div class="podium"><img src="${ballSrc(profile.selected)}" alt="Pelota equipada"></div>
         <span class="hero-name">${G.SKINS.find(s=>s.id===profile.selected).name}</span></div>
-        <div class="menu-bottom"><button class="btn btn-play" data-action="play">Empezar ascenso</button>
+        <div class="menu-bottom"><div class="menu-cards"><button class="route-ticket" data-action="route">${icon('missions')}<span><small>CUADERNO DE RUTA</small><b>${nextStop?nextStop.name:'Ruta explorada'}</b></span><em>${nextStop?nextStop.at+' m':'Ver ruta'}</em></button>
         <button class="next-card" data-action="skins"><img src="${ballSrc(next?next.id:profile.selected)}" alt="">
         <span class="next-copy"><small>${next?'PRÓXIMA PELOTA':'COLECCIÓN COMPLETA'}</small><b>${next?next.name:'36 de 36'}</b>
-        <span class="progress-track"><i style="width:${percentage}%"></i></span></span><b>${percentage}%</b></button>
-        <nav class="menu-nav"><button data-action="skins">${icon('marbles')}Pelotas</button>
-        <button data-action="events" data-tab="missions">${icon('missions')}Misiones</button>
-        <button data-action="events" data-tab="trails">${icon('chest')}Tienda</button>
-        <button data-action="settings">${icon('settings')}Ajustes</button></nav>
+        <span class="progress-track"><i style="width:${percentage}%"></i></span></span><b>${percentage}%</b></button></div>
+        <button class="dispatch" data-action="jobs">${icon('mailbag')}<span>Tablón de encargos<small>Contrarreloj y reparto postal</small></span>${icon('stopwatch')}</button>
+        <button class="btn btn-play" data-action="play">Empezar ascenso</button>
+
           ${storageError?`<p class="save-warning">${storageError}</p>`:''}
         </div></section>`;return;
+    }
+    if(mode==='jobs'){
+      overlay.innerHTML=`<section class="route-screen"><header class="page-header"><button class="back-btn" data-action="menu" aria-label="Volver">${icon('back')}</button><h1>Tablón de encargos</h1></header><div class="job-list">${G.JOBS.map(job=>`<article class="job-card"><img src="assets/${job.art}.png" alt=""><div><h2>${job.name}</h2><p>${job.brief}</p><small>${profile.records[job.id]?'Mejor tiempo · '+(profile.records[job.id]/1000).toFixed(1)+' s':'Primera entrega · '+job.reward+' monedas'}</small></div><button class="btn" data-action="job" data-id="${job.id}">Aceptar encargo</button></article>`).join('')}</div></section>`;return;
+    }
+    if(mode==='jobEnd'){
+      overlay.innerHTML=`<div class="screen-shade"><section class="modal-card"><img class="job-stamp" src="assets/${run.job.art}.png" alt=""><h1>${run.won?'¡Entrega a tiempo!':'Encargo pendiente'}</h1><p>${run.job.name} · ${run.elapsed.toFixed(1)} s<br>${run.reason}${run.reward?' · +'+run.reward+' monedas':''}</p><div class="stack"><button class="btn btn-green" data-action="retry">Reintentar</button><button class="btn" data-action="jobs">Volver al tablón</button></div></section></div>`;return;
+    }
+    if(mode==='route'){
+      const art={spring:'spring',spike:'spikes-left',double:'spikes-right'};
+      overlay.innerHTML=`<section class="route-screen"><header class="page-header"><button class="back-btn" data-action="menu" aria-label="Volver">${icon('back')}</button><div><h1>Cuaderno de ruta</h1><span>Tu récord · ${profile.high} m</span></div></header>
+        <div class="route-cover"><h2>Estaciones del cielo</h2><p>Practica desde cualquier estación que hayas alcanzado. En práctica no se ganan premios.</p></div>
+        <div class="route-list">${G.ROUTE.map((stage,index)=>{
+          const open=profile.high>=stage.at;
+          return `<article class="station-row"><img src="assets/${art[stage.type]||stage.type}.png" alt=""><div><small>${stage.at} m</small><h3>${stage.name}</h3><p>${stage.hint}</p><button class="trail-action" data-action="practice" data-index="${index}" ${open?'':'disabled'}>${open?'Practicar':'Alcanza '+stage.at+' m'}</button></div></article>`;
+        }).join('')}</div></section>`;return;
+    }
+    if(mode==='practiceEnd'){
+      overlay.innerHTML=`<div class="screen-shade"><section class="modal-card"><h1>Fin de la práctica</h1><p>${G.ROUTE[run.practiceIndex].name} · ${run.score-run.startHeight} m recorridos</p><p>${run.reason}</p><div class="stack"><button class="btn btn-green" data-action="retry">Repetir tramo</button><button class="btn" data-action="route">Cuaderno de ruta</button></div></section></div>`;return;
     }
     if(mode==='pause'){
       overlay.innerHTML=`<div class="screen-shade"><section class="modal-card pause-card">
@@ -519,12 +590,12 @@
        </div>`:`<div class="progress-card done"><h2>¡Colección completa!</h2><p>Has desbloqueado las 36 pelotas.</p></div>`;
       overlay.innerHTML=`<section class="results-screen"><div class="results-wrap">
         <div class="results-head"><span class="kicker">PARTIDA TERMINADA</span><h1>${result.isRecord?'¡NUEVO RÉCORD!':'¡BUEN REBOTE!'}</h1>
-         <div class="score-caption">TU PUNTUACIÓN</div><div class="score-number">${result.score}</div></div>
+         <div class="score-caption">ALTURA ALCANZADA</div><div class="score-number">${result.score} m</div><p class="result-tip">${run.reason}</p></div>
         <div class="result-rewards"><div><span>${coinIcon()} MONEDAS</span><b>+${result.earned}</b></div>
           <div><span>${icon('trophy')} Récord</span><b>${profile.high}</b></div>
           <div><span>${icon('star')} Estrellas</span><b>+${result.stars}</b></div>
           ${result.eventReward?`<div><span>${icon('chest')} Premio del festival</span><b>+${result.eventReward}</b></div>`:''}</div>
-        ${result.ready.length?`<p class="run-mission">${icon('missions')} Misión cumplida · ${result.ready.map(m=>m.name).join(', ')}. Cobra en Misiones.</p>`:''}
+        ${result.ready.length?`<button class="run-mission" data-action="events" data-tab="missions">${icon('nav-journal')} Cobrar misión · ${result.ready.map(m=>m.name).join(', ')}</button>`:''}
         ${meta}
         ${unlocked?`<button class="btn btn-unlock" data-action="showUnlock">¡VER PELOTA DESBLOQUEADA!</button>`:''}
         <div class="results-actions"><button class="btn btn-purple" data-action="menu">Menú</button><button class="btn btn-green" data-action="retry">Reintentar</button></div>
@@ -560,6 +631,8 @@
     }
     if(mode==='events'){
       const progress=profile.totalStars%12;
+      const rank=m=>profile.claimed.includes(m.id)?2:profile[m.stat]>=m.need?0:1;
+      const missions=G.MISSIONS.slice().sort((a,b)=>rank(a)-rank(b));
       overlay.innerHTML=`<section class="events-screen"><div class="page-header"><button class="back-btn" data-action="menu" aria-label="Volver">${icon('back')}</button>
       <div><h1>Campamento</h1><span>${coinIcon()} ${profile.coins} monedas</span></div></div>
       <div class="event-tabs"><button data-action="eventTab" data-tab="event" class="${eventTab==='event'?'active':''}">FESTIVAL</button>
@@ -571,22 +644,22 @@
       <div class="event-counter"><span>HACIA TU PRÓXIMA RECOMPENSA</span><b>${progress}/12</b>
       <div class="progress-track"><i style="width:${progress/12*100}%"></i></div><p>${Math.floor(profile.totalStars/12)} premios conseguidos · ${profile.totalStars} estrellas en total</p></div>
       <div class="info-note">Las estrellas aparecen en el recorrido. Los premios se entregan automáticamente al terminar la partida. No hay fecha límite.</div></div>`:
-      `<div class="trophy-list">${G.MISSIONS.map(m=>{
+      `<div class="trophy-list">${missions.map(m=>{
         const value=Math.min(profile[m.stat],m.need),claimed=profile.claimed.includes(m.id);
         return `<article class="trophy">${icon(claimed?'trophy':'missions')}<div><b>${m.name}</b><small>${value} / ${m.need} ${m.unit}</small>
         <div class="progress-track"><i style="width:${100*value/m.need}%"></i></div></div>
         <button class="trail-action" data-action="claim" data-id="${m.id}" ${claimed||value<m.need?'disabled':''}>${claimed?'Cobrado':(value===m.need?'Cobrar ':'')+'+'+m.reward+' '+coinIcon()}</button></article>`}).join('')}</div>`}
-      <button class="btn btn-green settings-return" data-action="menu">VOLVER AL MENÚ</button></section>`;return;
+      </section>`;return;
     }
     if(mode==='settings'){
       overlay.innerHTML=`<section class="settings-screen"><div class="page-header"><button class="back-btn" data-action="menu" aria-label="Volver">${icon('back')}</button><div><h1>AJUSTES</h1><span>A tu manera</span></div></div>
         <div class="settings-card"><div class="setting-row"><div>Música<small>Dos canciones originales</small></div><button class="switch ${profile.music?'on':''}" data-action="music">${profile.music?'SÍ':'NO'}</button></div>
         <div class="setting-row"><div>Sonidos<small>Saltos, premios y rebotes</small></div><button class="switch ${profile.sound?'on':''}" data-action="sound">${profile.sound?'SÍ':'NO'}</button></div>
-        <div class="setting-row"><div>VOLUMEN<small>${Math.round(profile.volume)}%</small></div><div class="volume-controls"><button data-action="volume" data-change="-10">−</button><b>${Math.round(profile.volume)}%</b><button data-action="volume" data-change="10">+</button></div></div>
+        <div class="setting-row"><div>VOLUMEN<small id="volume-value">${Math.round(profile.volume)}%</small></div><input type="range" id="volume-slider" aria-label="Volumen" min="0" max="100" value="${profile.volume}"></div>
         <div class="setting-row"><div>Partículas<small>Efectos visuales</small></div><button class="switch ${profile.reducedFx?'':'on'}" data-action="effects">${profile.reducedFx?'BAJO':'SÍ'}</button></div></div>
         <div class="data-card"><h2>Tu progreso</h2><p>Las partidas, monedas y pelotas se guardan dentro de <b>Documentos/Wall Bounce</b>.</p>
         <button class="btn btn-yellow" data-action="folder">Abrir carpeta</button>${storageError?`<p class="save-warning">${storageError}</p>`:''}</div>
-        <button class="btn btn-green settings-return" data-action="menu">VOLVER AL MENÚ</button></section>`;return;
+        </section>`;return;
     }
   }
   function animateProgress(data,epoch){
@@ -603,9 +676,13 @@
     requestAnimationFrame(step);
   }
   function frame(timestamp) {
-    const dt = Math.min(.032, Math.max(0, (timestamp - lastFrame) / 1000 || .016));
+    const dt = lastFrame === null ? 0 : Math.max(0,(timestamp-lastFrame)/1000);
     lastFrame = timestamp;
-    update(dt);
+    accumulator += Math.min(dt, .1);
+    while (accumulator + 1e-10 >= step) {
+      accumulator = Math.max(0, accumulator - step);
+      update(step);
+    }
     draw();
     requestAnimationFrame(frame);
   }

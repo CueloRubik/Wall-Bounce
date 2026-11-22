@@ -4,9 +4,10 @@ const rows=[['classic','Sonrisas','#fff0f8'],['cat','Michi','#ffaf86'],['bee','A
 const TRAILS=Object.freeze([{id:'original',name:'Destellos',price:0,colors:['#c584ed','#72e3f6']},{id:'mint',name:'Menta fresca',price:120,colors:['#67d5c6','#b3ffe9']},{id:'rose',name:'Cereza brillante',price:200,colors:['#ff72bb','#ffe0e7']},{id:'sun',name:'Chispas doradas',price:350,colors:['#ffc96c','#fff4aa']},{id:'galaxy',name:'Polvo galáctico',price:550,colors:['#8177dc','#e7acfa']}]);
 const SKINS=Object.freeze(rows.map(([id,name,color],index)=>Object.freeze({id,name,color,index})));
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));const int=v=>Number.isFinite(v)?Math.floor(clamp(v,0,100000000)):0;
-function freshProfile(){return{version:6,claimed:[],coins:0,high:0,plays:0,totalScore:0,totalStars:0,totalBounces:0,selected:'classic',trails:['original'],selectedTrail:'original',sound:true,music:true,volume:70,reducedFx:false,nextIndex:1,progress:0,unlocked:['classic']};}
+function freshProfile(){return{version:7,records:{},claimed:[],coins:0,high:0,plays:0,totalScore:0,totalStars:0,totalBounces:0,selected:'classic',trails:['original'],selectedTrail:'original',sound:true,music:true,volume:70,reducedFx:false,nextIndex:1,progress:0,unlocked:['classic']};}
 function normalizeProfile(raw){const p=freshProfile();if(!raw||typeof raw!=='object'||Array.isArray(raw))return p;
 for(const k of ['coins','high','plays','totalScore','totalStars','totalBounces'])p[k]=int(raw[k]);p.sound=raw.sound!==false;p.music=raw.music!==false;p.volume=Number.isFinite(raw.volume)?clamp(raw.volume,0,100):70;p.reducedFx=raw.reducedFx===true;
+for(const job of JOBS){const ms=int(raw.records?.[job.id]);if(ms>0)p.records[job.id]=ms;}
 p.claimed=MISSIONS.filter(m=>Array.isArray(raw.claimed)&&raw.claimed.includes(m.id)).map(m=>m.id);
 p.nextIndex=clamp(int(raw.nextIndex)||1,1,SKINS.length);p.progress=p.nextIndex===SKINS.length?100:clamp(int(raw.progress),0,99);p.unlocked=SKINS.slice(0,p.nextIndex).map(s=>s.id);p.selected=p.unlocked.includes(raw.selected)?raw.selected:'classic';p.trails=TRAILS.filter(t=>t.price===0 || (Array.isArray(raw.trails)&&raw.trails.includes(t.id))).map(t=>t.id);p.selectedTrail=p.trails.includes(raw.selectedTrail)?raw.selectedTrail:'original';return p;}
 function nextSkin(p){p=normalizeProfile(p);return p.nextIndex>=SKINS.length?null:SKINS[p.nextIndex];}
@@ -39,33 +40,79 @@ function claimMission(old,id){
  p.coins+=mission.reward;
  return p;
 }
+const JOBS = [
+ {id:'express',name:'Expreso del valle',art:'stopwatch',target:780,limit:19,reward:65,seed:711,brief:'Alcanza 780 m en 19 segundos.'},
+ {id:'post',name:'Correo de altura',art:'mailbag',target:3,limit:52,reward:90,seed:835,brief:'Recoge tres sacas de correo en 52 segundos.'}
+];
+function settleJob(profile,job,elapsed){
+ const next=normalizeProfile(profile), ms=Math.max(1,Math.round(elapsed*1000));
+ const best=next.records[job.id], reward=best ? 0 : job.reward;
+ next.records[job.id]=best ? Math.min(best,ms) : ms;
+ next.coins+=reward;
+ return {profile:next,reward};
+}
+function roll(ball,dt){
+ const target=clamp(ball.vx/ball.r*.39,-6,6);
+ ball.spin+=clamp(target-ball.spin,-17*dt,17*dt);
+ ball.angle=(ball.angle+ball.spin*dt)%(Math.PI*2);
+}
 const ROUTE = [
- {at:0,name:'Jardines del aire',type:'spring',hint:'El resorte azul te impulsa.'},
- {at:140,name:'Paso de cristal',type:'spike',hint:'Pasa junto a la pared libre.'},
- {at:480,name:'Puerto de carga',type:'block',hint:'Rodea la caja por un lado.'},
- {at:900,name:'Molino del valle',type:'saw',hint:'Deja espacio entre la sierra y tu pelota.'},
+ {at:0,name:'Jardines del aire',type:'spike',hint:'Elige el momento de pasar por la pared libre.'},
+ {at:180,name:'Taller de resortes',type:'spring',hint:'Cae sobre la placa roja para un lanzamiento protegido.'},
+ {at:390,name:'Puerto de carga',type:'block',hint:'Rodea la caja por un lado.'},
+ {at:810,name:'Molino del valle',type:'saw',hint:'Deja espacio entre la sierra y tu pelota.'},
  {at:1400,name:'Andén flotante',type:'moving',hint:'Observa el vaivén antes de subir.'},
- {at:2000,name:'Paso gemelo',type:'double',hint:'Cruza por el centro.'},
- {at:2700,name:'Central de tormentas',type:'beam',hint:'Pasa por fuera del arco eléctrico.'},
- {at:3500,name:'Aguja del cielo',type:'blade',hint:'Deja la cuchilla a un lado.'}
+ {at:2200,name:'Paso gemelo',type:'double',hint:'Cruza por el centro.'},
+ {at:3200,name:'Central de tormentas',type:'beam',hint:'Pasa por fuera del arco eléctrico.'},
+ {at:4400,name:'Aguja del cielo',type:'blade',hint:'Deja la cuchilla a un lado.'}
 ];
 function stageAt(height){return ROUTE.filter(s=>height>=s.at).pop()||ROUTE[0];}
-function gapFor(height,rng){return Math.max(345,465-height*.045)+rng()*40;}
-function obstacle(rng,index,y,height,previousHeight=height){
+function gapFor(height,rng){return Math.max(345,545-height*.105)+rng()*66;}
+function obstacle(rng,index,y,height,previousHeight=height,lastSpring=-100){
  const stage=stageAt(height), known=ROUTE.slice(0,ROUTE.indexOf(stage)+1);
- const type=index===0?'spring':stage.at>previousHeight?stage.type:index%4===0?'spring':known[Math.floor(rng()*known.length)].type;
+ const hazards=known.filter(s=>s.type!=='spring');
+ const bonus=height>=180 && index-lastSpring>=8 && index%9===7;
+ const type=stage.at>previousHeight ? stage.type : bonus ? 'spring' : hazards[Math.floor(rng()*hazards.length)].type;
  const o={type,y,phase:rng()*Math.PI*2,passed:false};
  switch(type){
- case 'spring': Object.assign(o,{x:115+rng()*54,w:76,h:48,used:false}); break;
- case 'spike': Object.assign(o,{side:rng()<.5?'left':'right',w:54,h:47}); break;
- case 'double': Object.assign(o,{w:46,h:41}); break;
- case 'saw': Object.assign(o,{x:126+rng()*108,r:26}); break;
- case 'block': case 'moving': Object.assign(o,{x:116+rng()*76,w:48,h:48,amp:26,speed:.95}); break;
+ case 'spring': Object.assign(o,{x:115+rng()*54,w:72,h:67,used:false}); break;
+ case 'spike': Object.assign(o,{side:(index+Math.floor(rng()*2))%3===0?'left':'right',w:68,h:71}); break;
+ case 'double': Object.assign(o,{w:49,h:60}); break;
+ case 'saw': Object.assign(o,{x:126+rng()*108,r:33}); break;
+ case 'block': Object.assign(o,{x:(index%2 ? 74 : 174)+rng()*28,w:76,h:66}); break;
+ case 'moving': Object.assign(o,{x:114+rng()*54,w:90,h:49,amp:30,speed:.84}); break;
  case 'beam': Object.assign(o,{x:110+rng()*55,w:83,h:25}); break;
- case 'blade': Object.assign(o,{x:132+rng()*68,w:32,h:65}); break;
+ case 'blade': Object.assign(o,{x:132+rng()*68,w:33,h:79}); break;
  }
  return o;
 }
+function pickupLane(o,rng){
+ if(o.type==='spike')return o.side==='left'?246:114;
+ if(o.type==='spring')return o.x+o.w/2;
+ if(o.type==='double')return 180;
+ const center=o.type==='saw'?o.x:o.x+o.w/2;
+ return center<180?262+rng()*13:85+rng()*13;
+}
 function circleRect(cx,cy,r,x,y,w,h){const nx=clamp(cx,x,x+w),ny=clamp(cy,y,y+h);return(cx-nx)**2+(cy-ny)**2<r*r;}
 function circleCircle(x1,y1,r1,x2,y2,r2){return(x1-x2)**2+(y1-y2)**2<(r1+r2)**2;}
-return{MISSIONS,claimMission,ROUTE,stageAt,gapFor,SKINS,TRAILS,buyTrail,freshProfile,normalizeProfile,nextSkin,progressFor,payout,gainForRun,applyRun,seeded,obstacle,circleRect,circleCircle,clamp};});
+function hitsSprite(mask, cx, cy, radius, x, y, w, h) {
+ if (!circleRect(cx,cy,radius,x,y,w,h)) return false;
+ const dx=w/mask[0].length, dy=h/mask.length;
+ const left=Math.max(0,Math.floor((cx-radius-x)/dx));
+ const right=Math.min(mask[0].length-1,Math.floor((cx+radius-x)/dx));
+ const top=Math.max(0,Math.floor((cy-radius-y)/dy));
+ const bottom=Math.min(mask.length-1,Math.floor((cy+radius-y)/dy));
+ for(let row=top;row<=bottom;row++){
+  for(let col=left;col<=right;col++){
+   if(mask[row][col]==='#' && circleRect(cx,cy,radius,x+col*dx,y+row*dy,dx,dy)) return true;
+  }
+ }
+ return false;
+}
+function reflectWall(ball,left,right){
+ const min=left+ball.r, max=right-ball.r;
+ if(ball.x>=max && ball.vx>0){ball.x=2*max-ball.x;ball.vx=-ball.vx;return true;}
+ if(ball.x<=min && ball.vx<0){ball.x=2*min-ball.x;ball.vx=-ball.vx;return true;}
+ return false;
+}
+return{JOBS,settleJob,roll,hitsSprite,reflectWall,pickupLane,MISSIONS,claimMission,ROUTE,stageAt,gapFor,SKINS,TRAILS,buyTrail,freshProfile,normalizeProfile,nextSkin,progressFor,payout,gainForRun,applyRun,seeded,obstacle,circleRect,circleCircle,clamp};});
