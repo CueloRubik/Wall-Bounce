@@ -96,3 +96,26 @@ body{background:linear-gradient(#10252ecf,#10252edf),url('assets/station.webp') 
   #dock .art-icon { width: 23px; height: 23px; }
   .menu-cards button { min-height: 60px; }
 }
+
+/* Painted enamel and paper from the station palette. */
+:root {
+  --paper: #f2e5c6;
+  --ink: #302e32;
+  --muted: #534f4c;
+  --teal: #3b625b;
+  --gold: #eabe70;
+}
+#dock { background-color: #343c3b; border-top-color: #786447; }
+#dock button { background-color: #415954; color: #faf0ce; }
+#dock button[aria-current] { background-color: #e2bc78; }
+#shell button { border-image-slice: 4; }
+.menu-screen { background: linear-gradient(0deg,#27332ff5, #27332f88 30%,transparent 65%); }
+.logo-text { font-style: normal; transform: none; letter-spacing: -.07em; color: #fff2ce; text-shadow: 0 3px #38443c,2px 6px #303335; }
+.logo-text strong { color: #f1be70; }
+.btn-play { background: #e7b969; }
+.podium img { filter: none; }
+.next-card,.route-ticket { border-radius: 0; }
+.route-ticket { background: #405950; }
+.catalog-screen,.settings-screen,.events-screen,.results-screen,.unlock-screen,.route-screen {
+  background: #e7ddc3;
+}

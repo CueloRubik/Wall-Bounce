@@ -76,4 +76,24 @@ function pickupLane(o,rng){
 }
 function circleRect(cx,cy,r,x,y,w,h){const nx=clamp(cx,x,x+w),ny=clamp(cy,y,y+h);return(cx-nx)**2+(cy-ny)**2<r*r;}
 function circleCircle(x1,y1,r1,x2,y2,r2){return(x1-x2)**2+(y1-y2)**2<(r1+r2)**2;}
-return{pickupLane,MISSIONS,claimMission,ROUTE,stageAt,gapFor,SKINS,TRAILS,buyTrail,freshProfile,normalizeProfile,nextSkin,progressFor,payout,gainForRun,applyRun,seeded,obstacle,circleRect,circleCircle,clamp};});
+function hitsSprite(mask, cx, cy, radius, x, y, w, h) {
+ if (!circleRect(cx,cy,radius,x,y,w,h)) return false;
+ const dx=w/mask[0].length, dy=h/mask.length;
+ const left=Math.max(0,Math.floor((cx-radius-x)/dx));
+ const right=Math.min(mask[0].length-1,Math.floor((cx+radius-x)/dx));
+ const top=Math.max(0,Math.floor((cy-radius-y)/dy));
+ const bottom=Math.min(mask.length-1,Math.floor((cy+radius-y)/dy));
+ for(let row=top;row<=bottom;row++){
+  for(let col=left;col<=right;col++){
+   if(mask[row][col]==='#' && circleRect(cx,cy,radius,x+col*dx,y+row*dy,dx,dy)) return true;
+  }
+ }
+ return false;
+}
+function reflectWall(ball,left,right){
+ const min=left+ball.r, max=right-ball.r;
+ if(ball.x>=max && ball.vx>0){ball.x=2*max-ball.x;ball.vx=-ball.vx;return true;}
+ if(ball.x<=min && ball.vx<0){ball.x=2*min-ball.x;ball.vx=-ball.vx;return true;}
+ return false;
+}
+return{hitsSprite,reflectWall,pickupLane,MISSIONS,claimMission,ROUTE,stageAt,gapFor,SKINS,TRAILS,buyTrail,freshProfile,normalizeProfile,nextSkin,progressFor,payout,gainForRun,applyRun,seeded,obstacle,circleRect,circleCircle,clamp};});

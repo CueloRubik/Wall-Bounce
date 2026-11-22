@@ -13,22 +13,15 @@
     img.src = id.startsWith('ball-') ? `assets/balls/${id.substring(5)}.png` : ['sky','station','harbor','observatory'].includes(id) ? `assets/${id}.webp` : `assets/${id}.png`;
     images[id] = img;
   });
-  function resizeCanvas(){
-    const scale=Math.min(window.devicePixelRatio||1,2);
-    const width=Math.round(canvas.clientWidth*scale), height=Math.round(canvas.clientHeight*scale);
-    if(width && height){
-      canvas.width=width;canvas.height=height;
-      ctx.setTransform(width/W,0,0,height/H,0,0);
-      ctx.imageSmoothingEnabled=false;
-    }
-  }
-  new ResizeObserver(resizeCanvas).observe(canvas);
-  resizeCanvas();
+  // Keep a single native drawing grid at every window size.
+  ctx.imageSmoothingEnabled = false;
   let profile = G.freshProfile();
   let mode = 'loading';
   let result = null;
   let run = null;
-  let lastFrame = 0;
+  let lastFrame = null;
+  let accumulator = 0;
+  const step = 1 / 120;
   let clock = 0;
   let animationEpoch = 0;
   let banner = null;
@@ -84,6 +77,8 @@
   }
   function startGame(practiceIndex = null) {
     const startHeight = practiceIndex === null ? 0 : G.ROUTE[practiceIndex].at;
+    clock = 0;
+    accumulator = 0;
     rng = G.seeded((Math.random() * 0xFFFFFFFF) >>> 0);
     run = {
       practiceIndex, startHeight, score: startHeight, picked: 0, stars: 0, shield: 0, wallBounces: 0, avoided: 0,
@@ -132,10 +127,10 @@
     if (!run || profile.reducedFx) return;
     for (let i = 0; i < count; i++) {
       run.particles.push({
-        x, y, vx: (rng() - .5) * speed * 2,
-        vy: (rng() - .5) * speed * 2,
-        size: 2 + Math.round(rng() * 3),
-        life: .28 + rng() * .3,
+        x, y, vx: (Math.random() - .5) * speed * 2,
+        vy: (Math.random() - .5) * speed * 2,
+        size: 2 + Math.round(Math.random() * 3),
+        life: .28 + Math.random() * .3,
         max: .58, color
       });
     }
@@ -147,7 +142,7 @@
       run.started = true;
       document.querySelector('.launch-tip')?.remove();
     }
-    b.vy = -376;
+    b.vy = Math.min(b.vy, -376);
     b.angle += (b.vx > 0 ? .18 : -.18);
     emit(b.x, b.y + run.camera, '#be88ff', 9, 82);
     Music.play('jump');
@@ -223,21 +218,12 @@
   function collision(o, b) {
     const r = b.r - 4;
     if (o.type === 'spring') return false;
-    if (o.type === 'beam' || o.type === 'blade') return G.circleRect(b.x,b.y,r,o.x+5,o.y+4,o.w-10,o.h-8);
-    if (o.type === 'spike') {
-      const x = o.side === 'left' ? LEFT : RIGHT - o.w;
-      return G.circleRect(b.x, b.y, r, x + 3, o.y + 3, o.w - 6, o.h - 6);
-    }
-    if (o.type === 'double') {
-      return G.circleRect(b.x, b.y, r, LEFT + 4, o.y + 3, o.w - 7, o.h - 6) ||
-        G.circleRect(b.x, b.y, r, RIGHT - o.w + 3, o.y + 3, o.w - 7, o.h - 6);
-    }
-    if (o.type === 'block') return G.circleRect(b.x, b.y, r, o.x + 3, o.y + 3, o.w - 6, o.h - 6);
-    if (o.type === 'moving') {
-      const x = o.x + Math.sin(clock * o.speed + o.phase) * o.amp;
-      return G.circleRect(b.x, b.y, r, x + 3, o.y + 3, o.w - 6, o.h - 6);
-    }
-    return G.circleCircle(b.x, b.y, r, o.x, o.y + o.r, o.r - 2);
+    if (o.type === 'saw') return G.circleCircle(b.x,b.y,r,o.x,o.y+o.r,o.r-2);
+    const hits = (id,x) => G.hitsSprite(hazardMasks[id],b.x,b.y,r,Math.round(x),o.y,o.w,o.h);
+    if (o.type === 'double') return hits('spikes-left',LEFT) || hits('spikes-right',RIGHT-o.w);
+    if (o.type === 'spike') return hits('spikes-'+o.side,o.side==='left' ? LEFT : RIGHT-o.w);
+    const x = o.type==='moving' ? o.x+Math.sin(clock*o.speed+o.phase)*o.amp : o.x;
+    return hits(o.type,x);
   }
   function finish(reason) {
     if (mode !== 'playing' || !run) return;
@@ -285,18 +271,7 @@
     const previousY = b.y;
     b.x += b.vx * dt;
     b.y += b.vy * dt;
-    if (b.x + b.r >= RIGHT) {
-      b.x = RIGHT - b.r;
-      b.vx = -speed;
-      run.wallBounces++;
-      b.impact = 1;
-      emit(b.x, b.y + run.camera, '#63ecff', 11);
-      run.shake = profile.reducedFx ? 0 : 2;
-      Music.play('bounce');
-    }
-    if (b.x - b.r <= LEFT) {
-      b.x = LEFT + b.r;
-      b.vx = speed;
+    if (G.reflectWall(b, LEFT, RIGHT)) {
       run.wallBounces++;
       b.impact = 1;
       emit(b.x, b.y + run.camera, '#63ecff', 11);
@@ -361,7 +336,8 @@
         const shield=document.getElementById('hud-shield');if(shield)shield.hidden=!run.shield;
       }
     }
-    b.trail.unshift({x: b.x, y: b.y});
+    const tail = b.trail[0];
+    if (!tail || Math.hypot(b.x-tail.x,b.y-tail.y)>=5) b.trail.unshift({x:b.x,y:b.y});
     if (b.trail.length > 13) b.trail.pop();
     run.obstacles = run.obstacles.filter(o => o.y + run.camera <= H + 100);
     run.pickups = run.pickups.filter(p => !p.taken && p.y + run.camera <= H + 60);
@@ -416,7 +392,7 @@
     if (img) {
       ctx.save();
       const impact = run && mode === 'playing' ? (run.ball.impact || 0) : 0;
-      ctx.translate(x,y);
+      ctx.translate(Math.round(x),Math.round(y));
       ctx.rotate(run && mode === 'playing' ? Math.sin(run.ball.angle) * .14 : Math.sin(clock*.8)*.05);
       ctx.scale(1+impact*.16,1-impact*.13);
       ctx.drawImage(img,-s/2,-s/2,s,s);
@@ -426,7 +402,7 @@
   }
   function draw() {
     ctx.save();
-    if (run && run.shake && !profile.reducedFx) ctx.translate(Math.round((rng() - .5) * run.shake), Math.round((rng() - .5) * run.shake));
+    if (run && run.shake && !profile.reducedFx) ctx.translate(Math.round((Math.random() - .5) * run.shake), Math.round((Math.random() - .5) * run.shake));
     drawBackground();
     if (run) {
       const cam = run.camera;
@@ -651,9 +627,13 @@
     requestAnimationFrame(step);
   }
   function frame(timestamp) {
-    const dt = Math.min(.032, Math.max(0, (timestamp - lastFrame) / 1000 || .016));
+    const dt = lastFrame === null ? 0 : Math.max(0,(timestamp-lastFrame)/1000);
     lastFrame = timestamp;
-    update(dt);
+    accumulator += Math.min(dt, .1);
+    while (accumulator + 1e-10 >= step) {
+      accumulator = Math.max(0, accumulator - step);
+      update(step);
+    }
     draw();
     requestAnimationFrame(frame);
   }
