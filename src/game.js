@@ -19,7 +19,7 @@
     if(width && height){
       canvas.width=width;canvas.height=height;
       ctx.setTransform(width/W,0,0,height/H,0,0);
-      ctx.imageSmoothingEnabled=true;
+      ctx.imageSmoothingEnabled=false;
     }
   }
   new ResizeObserver(resizeCanvas).observe(canvas);
@@ -69,6 +69,7 @@
     const tile=document.createElement('canvas');
     tile.width=40;tile.height=32;
     const paint=tile.getContext('2d');
+    paint.imageSmoothingEnabled=false;
     paint.drawImage(star,0,0,40,32);
     paint.globalCompositeOperation='source-atop';
     paint.globalAlpha=.65;
@@ -169,7 +170,7 @@
   window.addEventListener('blur', () => { if (mode === 'playing') pause(); Music.suspend(); });
   window.addEventListener('focus', () => { Music.sync(mode,profile.music,profile.volume,profile.sound); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'playing') pause(); });
-  overlay.addEventListener('click',event=>{
+  document.getElementById('shell').addEventListener('click',event=>{
     const button=event.target.closest('button[data-action]');if(!button)return;
     event.stopPropagation();
     Music.activate(mode,profile.music,profile.volume,profile.sound);
@@ -418,9 +419,7 @@
       ctx.translate(x,y);
       ctx.rotate(run && mode === 'playing' ? Math.sin(run.ball.angle) * .14 : Math.sin(clock*.8)*.05);
       ctx.scale(1+impact*.16,1-impact*.13);
-      ctx.imageSmoothingEnabled=true;
       ctx.drawImage(img,-s/2,-s/2,s,s);
-      ctx.imageSmoothingEnabled=true;
       ctx.restore();
     }
 
@@ -484,7 +483,26 @@
   function ballSrc(id){return `assets/balls/${id}.png`;}
   function icon(name){return `<img class="art-icon" src="assets/${name}.png" alt="">`;}
   function coinIcon(){return '<img class="coin-icon" src="assets/coin.png" alt="monedas">';}
+  const dock = document.getElementById('dock');
+  const destinations = [
+    ['menu', '', 'missions', 'Inicio'],
+    ['skins', '', 'nav-collection', 'Pelotas'],
+    ['events', 'missions', 'nav-journal', 'Misiones'],
+    ['events', 'trails', 'nav-shop', 'Tienda'],
+    ['settings', '', 'nav-tools', 'Ajustes']
+  ];
+  function updateDock(){
+    dock.hidden = !['menu','skins','events','settings','route'].includes(mode);
+    if (dock.hidden) return;
+    const ready = G.MISSIONS.filter(m => profile[m.stat] >= m.need && !profile.claimed.includes(m.id)).length;
+    dock.innerHTML = destinations.map(([action,tab,art,label]) => {
+      const current = action === mode && (!tab || tab === eventTab || (tab === 'missions' && eventTab === 'event'));
+      const badge = tab === 'missions' && ready ? `<sup>${ready}</sup>` : '';
+      return `<button data-action="${action}" data-tab="${tab}" ${current ? 'aria-current="page"' : ''}>${icon(art)}<span>${label}</span>${badge}</button>`;
+    }).join('');
+  }
   function renderUI(){
+    updateDock();
     animationEpoch++;
     const epoch=animationEpoch;
     document.getElementById('shell').dataset.view=mode;
@@ -502,21 +520,18 @@
       const next=G.nextSkin(profile);
       const percentage=next?profile.progress:100;
       const nextStop=G.ROUTE.find(stage=>stage.at>profile.high);
-      const ready=G.MISSIONS.filter(m=>profile[m.stat]>=m.need && !profile.claimed.includes(m.id)).length;
+
       overlay.innerHTML=`<section class="menu-screen">
         <header class="menu-top"><span class="pill">${coinIcon()} ${profile.coins}</span><span class="pill">${icon('trophy')} Récord · ${profile.high} m</span></header>
         <div class="menu-hero"><h1 class="logo-text"><span>Wall</span><strong>Bounce</strong></h1>
         <div class="podium"><img src="${ballSrc(profile.selected)}" alt="Pelota equipada"></div>
         <span class="hero-name">${G.SKINS.find(s=>s.id===profile.selected).name}</span></div>
-        <div class="menu-bottom"><button class="route-ticket" data-action="route">${icon('missions')}<span><small>CUADERNO DE RUTA</small><b>${nextStop?nextStop.name:'Ruta explorada'}</b></span><em>${nextStop?nextStop.at+' m':'Ver ruta'}</em></button>
-        <button class="btn btn-play" data-action="play">Empezar ascenso</button>
+        <div class="menu-bottom"><div class="menu-cards"><button class="route-ticket" data-action="route">${icon('missions')}<span><small>CUADERNO DE RUTA</small><b>${nextStop?nextStop.name:'Ruta explorada'}</b></span><em>${nextStop?nextStop.at+' m':'Ver ruta'}</em></button>
         <button class="next-card" data-action="skins"><img src="${ballSrc(next?next.id:profile.selected)}" alt="">
         <span class="next-copy"><small>${next?'PRÓXIMA PELOTA':'COLECCIÓN COMPLETA'}</small><b>${next?next.name:'36 de 36'}</b>
-        <span class="progress-track"><i style="width:${percentage}%"></i></span></span><b>${percentage}%</b></button>
-        <nav class="menu-nav"><button data-action="skins">${icon('nav-collection')}Pelotas</button>
-        <button data-action="events" data-tab="missions">${icon('nav-journal')}Misiones${ready?`<sup>${ready}</sup>`:''}</button>
-        <button data-action="events" data-tab="trails">${icon('nav-shop')}Tienda</button>
-        <button data-action="settings">${icon('nav-tools')}Ajustes</button></nav>
+        <span class="progress-track"><i style="width:${percentage}%"></i></span></span><b>${percentage}%</b></button></div>
+        <button class="btn btn-play" data-action="play">Empezar ascenso</button>
+
           ${storageError?`<p class="save-warning">${storageError}</p>`:''}
         </div></section>`;return;
     }
@@ -609,7 +624,7 @@
         return `<article class="trophy">${icon(claimed?'trophy':'missions')}<div><b>${m.name}</b><small>${value} / ${m.need} ${m.unit}</small>
         <div class="progress-track"><i style="width:${100*value/m.need}%"></i></div></div>
         <button class="trail-action" data-action="claim" data-id="${m.id}" ${claimed||value<m.need?'disabled':''}>${claimed?'Cobrado':(value===m.need?'Cobrar ':'')+'+'+m.reward+' '+coinIcon()}</button></article>`}).join('')}</div>`}
-      <button class="btn btn-green settings-return" data-action="menu">VOLVER AL MENÚ</button></section>`;return;
+      </section>`;return;
     }
     if(mode==='settings'){
       overlay.innerHTML=`<section class="settings-screen"><div class="page-header"><button class="back-btn" data-action="menu" aria-label="Volver">${icon('back')}</button><div><h1>AJUSTES</h1><span>A tu manera</span></div></div>
@@ -619,7 +634,7 @@
         <div class="setting-row"><div>Partículas<small>Efectos visuales</small></div><button class="switch ${profile.reducedFx?'':'on'}" data-action="effects">${profile.reducedFx?'BAJO':'SÍ'}</button></div></div>
         <div class="data-card"><h2>Tu progreso</h2><p>Las partidas, monedas y pelotas se guardan dentro de <b>Documentos/Wall Bounce</b>.</p>
         <button class="btn btn-yellow" data-action="folder">Abrir carpeta</button>${storageError?`<p class="save-warning">${storageError}</p>`:''}</div>
-        <button class="btn btn-green settings-return" data-action="menu">VOLVER AL MENÚ</button></section>`;return;
+        </section>`;return;
     }
   }
   function animateProgress(data,epoch){

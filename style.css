@@ -34,3 +34,65 @@ body{background:linear-gradient(#10252ecf,#10252edf),url('assets/station.webp') 
 @media(max-height:640px){.menu-hero{min-height:125px}.logo-text{font-size:44px}.podium img{width:58px}.route-ticket{padding:5px 12px}}
 #shell[data-view="playing"],#shell[data-view="pause"]{width:min(100vw,56.25dvh);height:min(100dvh,177.778vw);top:50dvh;transform:translateY(-50%)}
 .menu-nav{background:#fff4dceb;gap:4px;padding:6px;border-color:#efd4a1}.menu-nav .art-icon{width:clamp(34px,6vh,54px);height:clamp(34px,6vh,54px)}.menu-nav button{color:#3c392a}.menu-nav button+button{border-left:1px solid #d2c09c;border-radius:0}.event-hero{background:linear-gradient(95deg,#153450ee,#153450bd),url('assets/observatory.webp') center 64%/cover;color:#ffe6aa}.event-hero p{color:#fff8e8}.run-mission{border:1px solid #8caa82;color:#204b38}.hud-stars img[hidden]{display:none}
+
+/* Cabinet and persistent touch navigation */
+:root {
+  --ink: #26243a;
+  --muted: #56546a;
+  --paper: #fff4d8;
+  --edge: #c5a474;
+  --teal: #14565a;
+  --dock-height: calc(74px + env(safe-area-inset-bottom));
+}
+#shell { isolation: isolate; }
+#shell:has(#dock:not([hidden])) #overlay { bottom: var(--dock-height); height: auto; }
+#shell img, #game, .route-cover, .event-hero, body { image-rendering: pixelated; }
+#dock[hidden] { display: none; }
+#dock {
+  position: absolute; inset: auto 0 0; z-index: 2;
+  display: grid; grid-template-columns: repeat(5,minmax(0,1fr));
+  height: var(--dock-height); gap: 5px; padding: 5px 7px max(7px,env(safe-area-inset-bottom));
+  border: 0; border-top: 3px solid #c59960; border-radius: 0; background: #192e38;
+}
+#shell button {
+  border: 5px solid transparent; border-radius: 0;
+  border-image: url('assets/button-frame.png') 8 / 5px stretch;
+  background-clip: padding-box;
+  box-shadow: 0 2px 0 #392a39;
+}
+#shell button:focus-visible { outline: 3px solid #ff913e; outline-offset: -3px; }
+#shell button:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
+#shell button:disabled { background-color: #d8cfbd; color: #565368; }
+#dock button {
+  display: grid; align-content: center; justify-items: center; gap: 1px;
+  min-width: 0; padding: 0; background-color: #22474e; color: #fff5d7; font-size: 11px;
+}
+#dock button[aria-current] { background-color: #f3ca7c; color: #302635; }
+#dock .art-icon { width: 29px; height: 29px; }
+#dock sup { top: -3px; right: -3px; }
+.menu-screen { padding: 12px 14px; }
+.menu-hero { min-height: 140px; }
+.logo-text { font-family: ui-monospace,monospace; font-style: normal; text-transform: uppercase; letter-spacing: -.09em; }
+.hero-name,.pill,.hud-score,.hud-coins,.hud-stars { border-radius: 3px; }
+.menu-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.menu-cards button {
+  position: relative; display: grid; grid-template-columns: 30px minmax(0,1fr);
+  align-content: center; gap: 3px 6px; padding: 6px; min-height: 75px;
+}
+.menu-cards .art-icon,.menu-cards .next-card>img { width: 30px; height: 34px; grid-row: span 2; }
+.menu-cards small { font-size: 9px; letter-spacing: .04em; }
+.menu-cards .route-ticket b,.menu-cards .next-copy b { font: bold 14px/1.1 system-ui,sans-serif; }
+.menu-cards em,.menu-cards .next-card>b { grid-column: 2; font-size: 11px; }
+.btn-play { font: 900 22px/1.1 ui-monospace,monospace; text-transform: uppercase; letter-spacing: -.04em; }
+.catalog-tabs button,.event-tabs button { min-height: 44px; background-color: #efe1bc; }
+.catalog-tabs .active,.event-tabs .active { background-color: var(--teal); }
+#shell .skin-tile.selected { background-color: #c5e5ca; }
+.page-header h1,.results-head h1,.unlock-screen h1,.route-cover h2 { font-family: ui-monospace,monospace; letter-spacing: -.06em; }
+.inspect-panel,.trophy,.station-row,.settings-card,.data-card,.route-cover,.modal-card,.event-hero { border-radius: 4px; }
+.back-btn,.hud-pause,.switch,.trail-action { min-width: 44px; min-height: 44px; }
+.catalog-screen,.events-screen,.route-screen,.settings-screen { padding: 12px; gap: 9px; }
+@media (max-height: 640px) {
+  :root { --dock-height: calc(61px + env(safe-area-inset-bottom)); }
+  #dock .art-icon { width: 23px; height: 23px; }
+  .menu-cards button { min-height: 60px; }
+}
