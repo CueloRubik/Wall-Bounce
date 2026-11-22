@@ -75,7 +75,7 @@ Las pruebas automatizadas comprueban el guardado en Documentos, los respaldos, l
 - Tipografía: utiliza fuentes del sistema; el archivo OTF original no se redistribuye en el repositorio.
 - `tests/`: pruebas de regresión.
 
-El motor es HTML/CSS/JS Canvas. Cuando se pase a Capacitor, solo habrá que adaptar el puente de almacenamiento a un API de archivos nativo de Android, manteniendo la lógica del juego.
+El motor es HTML/CSS/JS Canvas. La edición Android utiliza Capacitor 8, preferencias nativas, notificaciones locales y una interfaz táctil independiente. Consulta [la guía de Android](mobile/README.md) para instalar y compilar la edición 1.3.1.
 
 ## Compilar DMG para macOS
 

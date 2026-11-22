@@ -20,7 +20,7 @@ El lanzador usa la ilustración PNG de Sonrisas. La partida, los sellos y las co
 
 - Pasaporte con nivel de experiencia separado de las 15 divisiones de liga. Las ligas son progresión personal sin clasificación multijugador.
 - Ruta diaria opcional, con tres variantes: altura, correo y rebotes. Cada variante usa una semilla fija para el día, y repetirla no duplica monedas. Los encargos permanentes y la práctica siguen disponibles.
-- Ocho estelas, imán permanente, escudos y bobina de impulso con dos niveles. Las mejoras no alteran las rutas competitivas de marca personal. No hay compras reales.
+- Ocho estelas, imán permanente, escudos y bobina de impulso con dos niveles. Las mejoras se aplican al ascenso normal; no alteran los encargos cronometrados ni el modo de práctica. No hay compras reales.
 - Los sellos no se pierden por no entrar. Sin anuncios ni conexión necesaria para jugar.
 - Interfaz propia con indicadores de nivel, liga y siguiente pelota; botones táctiles y adaptación a pantallas estrechas.
 - Guardado previo de respaldo y recuperación si el JSON principal resulta dañado.
