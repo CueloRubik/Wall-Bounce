@@ -1,0 +1,7 @@
+{
+  "appId": "com.cuelorubik.wallbounce",
+  "appName": "Wall Bounce",
+  "webDir": "www",
+  "backgroundColor": "#203637",
+  "plugins": {"LocalNotifications":{"smallIcon":"ic_reminder","iconColor":"#318776"}}
+}

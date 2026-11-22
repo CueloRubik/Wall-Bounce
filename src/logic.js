@@ -4,20 +4,58 @@ const rows=[['classic','Sonrisas','#fff0f8'],['cat','Michi','#ffaf86'],['bee','A
 const TRAILS=Object.freeze([{id:'original',name:'Destellos',price:0,colors:['#c584ed','#72e3f6']},{id:'mint',name:'Menta fresca',price:120,colors:['#67d5c6','#b3ffe9']},{id:'rose',name:'Cereza brillante',price:200,colors:['#ff72bb','#ffe0e7']},{id:'sun',name:'Chispas doradas',price:350,colors:['#ffc96c','#fff4aa']},{id:'galaxy',name:'Polvo galáctico',price:550,colors:['#8177dc','#e7acfa']}]);
 const SKINS=Object.freeze(rows.map(([id,name,color],index)=>Object.freeze({id,name,color,index})));
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));const int=v=>Number.isFinite(v)?Math.floor(clamp(v,0,100000000)):0;
-function freshProfile(){return{version:7,records:{},claimed:[],coins:0,high:0,plays:0,totalScore:0,totalStars:0,totalBounces:0,selected:'classic',trails:['original'],selectedTrail:'original',sound:true,music:true,volume:70,reducedFx:false,nextIndex:1,progress:0,unlocked:['classic']};}
+function freshProfile(){return{version:8,xp:0,stamps:0,claimDay:0,magnet:0,tickets:0,reminders:false,records:{},claimed:[],coins:0,high:0,plays:0,totalScore:0,totalStars:0,totalBounces:0,selected:'classic',trails:['original'],selectedTrail:'original',sound:true,music:true,volume:70,reducedFx:false,nextIndex:1,progress:0,unlocked:['classic']};}
 function normalizeProfile(raw){const p=freshProfile();if(!raw||typeof raw!=='object'||Array.isArray(raw))return p;
 for(const k of ['coins','high','plays','totalScore','totalStars','totalBounces'])p[k]=int(raw[k]);p.sound=raw.sound!==false;p.music=raw.music!==false;p.volume=Number.isFinite(raw.volume)?clamp(raw.volume,0,100):70;p.reducedFx=raw.reducedFx===true;
 for(const job of JOBS){const ms=int(raw.records?.[job.id]);if(ms>0)p.records[job.id]=ms;}
+for(const key of ['xp','stamps','claimDay'])p[key]=int(raw[key]);
+p.magnet=Math.min(3,int(raw.magnet));p.tickets=Math.min(5,int(raw.tickets));p.reminders=raw.reminders===true;
 p.claimed=MISSIONS.filter(m=>Array.isArray(raw.claimed)&&raw.claimed.includes(m.id)).map(m=>m.id);
 p.nextIndex=clamp(int(raw.nextIndex)||1,1,SKINS.length);p.progress=p.nextIndex===SKINS.length?100:clamp(int(raw.progress),0,99);p.unlocked=SKINS.slice(0,p.nextIndex).map(s=>s.id);p.selected=p.unlocked.includes(raw.selected)?raw.selected:'classic';p.trails=TRAILS.filter(t=>t.price===0 || (Array.isArray(raw.trails)&&raw.trails.includes(t.id))).map(t=>t.id);p.selectedTrail=p.trails.includes(raw.selectedTrail)?raw.selectedTrail:'original';return p;}
+const DAILY=[20,30,35,45,50,65,100];
+const LEAGUES=['Bronce','Plata','Oro','Platino','Diamante'];
+const DIVISIONS=['I','II','III'];
+const thresholds=[0];
+for(let i=1;i<LEAGUES.length*3;i++)thresholds[i]=thresholds[i-1]+60+25*i;
+function league(xp){
+ const points=int(xp);
+ let tier=0;
+ while(tier+1<thresholds.length && points>=thresholds[tier+1])tier++;
+ return {tier,name:LEAGUES[Math.floor(tier/3)]+' '+DIVISIONS[tier%3],floor:thresholds[tier],next:thresholds[tier+1]??null};
+}
+function dayNumber(now=new Date()){
+ return Math.floor(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate())/86400000);
+}
+function claimDaily(old,day){
+ const p=normalizeProfile(old);
+ if(!Number.isInteger(day)||day<=p.claimDay)return {profile:p,reward:0};
+ const reward=DAILY[p.stamps%DAILY.length];
+ p.coins+=reward;p.claimDay=day;p.stamps++;
+ return {profile:p,reward};
+}
+function price(p,id){
+ if(id==='magnet' && p.magnet<3)return [90,190,320][p.magnet];
+ if(id==='ticket' && p.tickets<5)return 50;
+ return null;
+}
+function buyGear(old,id){
+ const p=normalizeProfile(old), cost=price(p,id);
+ if(cost===null || p.coins<cost)return {profile:p,success:false};
+ p.coins-=cost;
+ if(id==='magnet')p.magnet++;else p.tickets++;
+ return {profile:p,success:true};
+}
 function nextSkin(p){p=normalizeProfile(p);return p.nextIndex>=SKINS.length?null:SKINS[p.nextIndex];}
 function progressFor(profile,skin){const p=normalizeProfile(profile);const s=typeof skin==='string'?SKINS.find(x=>x.id===skin):skin;if(!s)return{pct:0,unlocked:false,active:false};if(s.index<p.nextIndex)return{pct:100,unlocked:true,active:false};return{pct:s.index===p.nextIndex?p.progress:0,unlocked:false,active:s.index===p.nextIndex};}
 function payout(run){const score=int(run.score);return(score?Math.max(1,Math.floor(score/8)):1)+int(run.picked)*3;}
 function gainForRun(run){return clamp(3+Math.floor(int(run.score)/65)+Math.min(2,int(run.stars||0)),3,14);}
-function applyRun(old,run){const before=normalizeProfile(old),p=normalizeProfile(old),score=int(run.score),stars=int(run.stars),earned=payout(run),target=nextSkin(before);const from=target?before.progress:100,gain=target?gainForRun(run):0;
+function applyRun(old,run){const before=normalizeProfile(old),p=normalizeProfile(old),score=int(run.score),stars=int(run.stars),earned=payout(run)+int(run.comboCoins),target=nextSkin(before);const from=target?before.progress:100,gain=target?gainForRun(run):0;
 const eventReward=(Math.floor((p.totalStars+stars)/12)-Math.floor(p.totalStars/12))*80;p.coins+=earned+eventReward;p.totalStars+=stars;p.totalBounces+=int(run.wallBounces);p.plays++;p.totalScore+=score;p.high=Math.max(p.high,score);let unlocked=null,to=Math.min(100,from+gain);
+const xpGain=Math.min(150,Math.floor(score/12)+int(run.picked)*2+stars*5);
+p.xp+=xpGain;
+const climbed=league(p.xp).tier>league(before.xp).tier;
 if(target){if(to>=100){unlocked=target.id;p.nextIndex++;p.unlocked.push(target.id);p.progress=p.nextIndex>=SKINS.length?100:0;}else p.progress=to;}
-return{profile:normalizeProfile(p),earned,eventReward,stars,gained:target?to-from:0,displayGain:gain,target,from,to,unlocked,isRecord:score>before.high,score};}
+return{profile:normalizeProfile(p),earned,eventReward,stars,xpGain,climbed,gained:target?to-from:0,displayGain:gain,target,from,to,unlocked,isRecord:score>before.high,score};}
 function buyTrail(old,id){const p=normalizeProfile(old),t=TRAILS.find(a=>a.id===id);if(!t)return {profile:p,success:false,reason:'invalid'};if(p.trails.includes(id)){p.selectedTrail=id;return {profile:p,success:true,purchased:false};}if(p.coins<t.price)return {profile:p,success:false,reason:'coins'};p.coins-=t.price;p.trails.push(id);p.selectedTrail=id;return {profile:normalizeProfile(p),success:true,purchased:true};}
 function seeded(seed){let state=seed>>>0;return()=>{state+=0x6D2B79F5;let t=state;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};}
 const MISSIONS = [
@@ -115,4 +153,4 @@ function reflectWall(ball,left,right){
  if(ball.x<=min && ball.vx<0){ball.x=2*min-ball.x;ball.vx=-ball.vx;return true;}
  return false;
 }
-return{JOBS,settleJob,roll,hitsSprite,reflectWall,pickupLane,MISSIONS,claimMission,ROUTE,stageAt,gapFor,SKINS,TRAILS,buyTrail,freshProfile,normalizeProfile,nextSkin,progressFor,payout,gainForRun,applyRun,seeded,obstacle,circleRect,circleCircle,clamp};});
+return{DAILY,league,dayNumber,claimDaily,price,buyGear,JOBS,settleJob,roll,hitsSprite,reflectWall,pickupLane,MISSIONS,claimMission,ROUTE,stageAt,gapFor,SKINS,TRAILS,buyTrail,freshProfile,normalizeProfile,nextSkin,progressFor,payout,gainForRun,applyRun,seeded,obstacle,circleRect,circleCircle,clamp};});

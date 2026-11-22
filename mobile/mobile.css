@@ -1,0 +1,63 @@
+:root {
+  --safe-top: var(--safe-area-inset-top,env(safe-area-inset-top,0px));
+  --safe-bottom: var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px));
+  --dock-height: 68px;
+}
+body { background:#243f40; }
+.handheld #shell, .handheld #shell[data-view] {
+  position:absolute;top:var(--safe-top); bottom:var(--safe-bottom);left:0;right:0;
+  width:auto;height:auto;transform:none;box-shadow:none;
+}
+.handheld #dock { padding-bottom:5px; background:#203739; }
+.handheld #dock button { min-height:48px; }
+.station-home { height:100%;overflow-y:auto;display:flex;flex-direction:column;gap:10px;
+  color:#fff2cd;padding:clamp(12px,3vw,24px);background:#233e40; }
+.station-home header { display:flex;justify-content:space-between;align-items:center;font:bold 18px monospace; }
+.station-home header b,.mobile-rank em { padding:6px 10px;background:#152e31;border:1px solid #9f9e7e;color:#ffe2a6; }
+.platform { position:relative;isolation:isolate;flex:1;min-height:124px;display:flex;align-items:end;
+  justify-content:space-between;padding:16px;border:3px solid #d3b57d;
+  background:linear-gradient(0deg,#183738da,transparent 70%),url('assets/station.webp') center 64%/cover; image-rendering:pixelated; }
+.platform h1 { font:bold clamp(32px,8vw,58px)/.97 ui-monospace,monospace;color:#fff0bd;text-shadow:2px 3px #293e41; }
+.platform small { font:bold 12px system-ui; }
+.platform img { width:clamp(64px,19vw,114px); }
+.station-home .btn-play { min-height:56px;color:#352c27; }
+.mobile-rank { display:flex;align-items:center;gap:10px;text-align:left;padding:10px;background:#e7d9b6; }
+.mobile-rank .art-icon,.station-options .art-icon { width:32px;height:32px; }
+.mobile-rank span { flex:1;display:grid; }
+.mobile-rank em { font:600 11px system-ui; }
+.station-options { display:grid;grid-template-columns:1fr 1fr; gap:8px; }
+.station-options button { padding:7px;display:flex;align-items:center;justify-content:center;gap:8px;background:#d0e3d1; }
+.station-record { font:600 12px system-ui;text-align:center;color:#ead9ae; }
+.handheld :is(.events-screen,.route-screen,.catalog-screen,.settings-screen,.results-screen) {padding:clamp(12px,3vw,24px);}
+.handheld :is(.catalog-tabs,.event-tabs,.page-header) {flex-shrink:0}
+.handheld .catalog-grid {grid-template-columns:repeat(auto-fit,minmax(82px,1fr));}
+.handheld #shell:is([data-view="playing"],[data-view="pause"]) {
+  background:linear-gradient(#283f40,#183031);
+}
+.handheld #shell:is([data-view="playing"],[data-view="pause"]) #game {
+  top:58px; bottom:62px; width:100%; height:calc(100% - 120px); object-fit:contain;
+}
+.handheld .hud { top:3px; height:52px; }
+.handheld .jump-pad { position:absolute;bottom:7px;left:5%;width:90%;height:48px;background:#e5bb74;text-transform:uppercase;font:bold 18px monospace; }
+.handheld .job-hud { top:62px; }
+.league-card { text-align:center;padding:20px;border:3px solid #73523d;background:#f4d8a4; }
+.league-card[data-metal="1"] {background:#dbe4df;}
+.league-card[data-metal="2"] {background:#f7d674;}
+.league-card[data-metal="3"] {background:#b9e2db;}
+.league-card[data-metal="4"] {background:#b4dcf1;}
+.league-card .art-icon {width:56px;height:56px;}
+.league-card progress {width:85%;accent-color:#387465;}
+.stamps {display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;}
+.stamps span {display:grid;justify-items:center;border:1px dashed #8f795e;padding:4px 1px;}
+.stamps .stamped {background:#bdd6b6;}
+.league-result {display:flex;align-items:center;gap:10px;padding:12px;background:#dbe3c8;color:#293b38;}
+.league-result b {margin-left:auto;}
+.promoted {background:#f6d479;animation:stamp .4s ease-out;}
+@keyframes stamp {from{transform:scale(.94)}to{transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.promoted{animation:none}}
+@media(min-width:600px){
+ .station-home {display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto 1fr auto auto auto;column-gap:18px;}
+ .station-home header,.station-record {grid-column:1/-1}
+ .platform {grid-row:2/5;grid-column:1}
+ .station-home .btn-play,.mobile-rank,.station-options {grid-column:2;align-self:end;}
+}

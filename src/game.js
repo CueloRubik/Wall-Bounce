@@ -32,17 +32,19 @@
   let scrollPosition = 0;
   const Music = window.WallBounceMusic;
   let writeQueue=Promise.resolve();
+  const native=window.mobileStation;
+  let notice='',permissionBusy=false;
   let storageError='';
   async function loadProfile(){
     if(!window.wallBounceStorage)return G.freshProfile();
     try{return G.normalizeProfile(await window.wallBounceStorage.load());}
-    catch(error){storageError='No se pudo abrir el archivo de progreso en Documentos.';return G.freshProfile();}
+    catch(error){storageError='No se pudo leer el progreso guardado.';return G.freshProfile();}
   }
   function saveProfile(){
     if(!window.wallBounceStorage)return;
     const snapshot=JSON.parse(JSON.stringify(profile));
     writeQueue=writeQueue.then(()=>window.wallBounceStorage.save(snapshot)).catch(error=>{
-      storageError='No se pudo guardar en Documentos. Comprueba los permisos.';
+      storageError='No se pudo guardar el progreso.';
       console.error('Guardado fallido:',error);
     });
   }
@@ -81,7 +83,7 @@
     accumulator = 0;
     rng = G.seeded(job?.seed ?? ((Math.random() * 0xFFFFFFFF) >>> 0));
     run = {
-      job, elapsed:0, parcels:0, lastSpring:-100, nextTap:0, boost:0,
+      job, combo:0, comboCoins:0, lastCoin:-10, elapsed:0, parcels:0, lastSpring:-100, nextTap:0, boost:0,
       practiceIndex, startHeight, score: startHeight, picked: 0, stars: 0, shield: 0, wallBounces: 0, avoided: 0,
       balls: [], obstacles: [], pickups: [], particles: [],
       lastHeight: startHeight, started: false, nextY: 220, spawned: 0, camera: 0, shake: 0, flash: 0,
@@ -147,6 +149,10 @@
     const b = run.ball;
     if (!run.started) {
       run.started = true;
+      if(!run.job && run.practiceIndex===null && profile.tickets>0){
+        profile.tickets--;run.shield=1;saveProfile();
+        const shield=document.getElementById('hud-shield');if(shield)shield.hidden=false;
+      }
       document.querySelector('.launch-tip')?.remove();
     }
     if(run.elapsed + 1e-6 < run.nextTap)return;
@@ -164,7 +170,7 @@
     if (['Space','ArrowUp','Escape'].includes(event.code) && ['playing','pause','menu'].includes(mode)) event.preventDefault();
     if (event.code === 'Escape') {
       if (mode === 'playing' || mode === 'pause') pause();
-      else if (mode === 'skins' || mode === 'settings' || mode === 'unlocked' || mode === 'events' || mode === 'route' || mode === 'practiceEnd' || mode === 'jobs' || mode === 'jobEnd') menu();
+      else if (mode === 'skins' || mode === 'settings' || mode === 'unlocked' || mode === 'events' || mode === 'route' || mode === 'practiceEnd' || mode === 'jobs' || mode === 'jobEnd' || mode === 'passport') menu();
     } else if ((event.code === 'Space' || event.code === 'ArrowUp') && !event.repeat) {
       if (mode === 'playing') impulse();
       else if (mode === 'menu') startGame();
@@ -178,6 +184,25 @@
     event.stopPropagation();
     Music.activate(mode,profile.music,profile.volume,profile.sound);
     const action=button.dataset.action;
+    if(action==='jump'){impulse();return;}
+    if(action==='daily'){
+      const claim=G.claimDaily(profile,G.dayNumber());profile=claim.profile;
+      if(claim.reward){notice='Sello recibido · +'+claim.reward+' monedas';saveProfile();Music.play('coin');}
+      renderUI();return;
+    }
+    if(action==='passport'){mode='passport';notice='';renderUI();return;}
+    if(action==='gear'){
+      const bought=G.buyGear(profile,button.dataset.id);
+      if(bought.success){profile=bought.profile;saveProfile();Music.play('unlock');}
+      renderUI();return;
+    }
+    if(action==='reminders' && native){
+      if(permissionBusy)return;
+      permissionBusy=true;button.disabled=true;
+      native.change(!profile.reminders).then(enabled=>{
+        profile.reminders=enabled;notice=enabled?'Recordatorio activado.':'Recordatorios desactivados.';saveProfile();
+      }).catch(()=>{notice='No se pudo cambiar el recordatorio.';}).finally(()=>{permissionBusy=false;renderUI();});return;
+    }
     if(action==='play')startGame();
     else if(action==='retry')startGame(run?.practiceIndex ?? null,run?.job ?? null);
     else if(action==='jobs'){run=null;mode='jobs';renderUI();}
@@ -264,7 +289,7 @@
     saveProfile();
     mode = 'over';
     animationEpoch++;
-    Music.play('hit');
+    Music.play(result.climbed?'level':'hit');
     renderUI();
   }
   function update(dt) {
@@ -350,10 +375,16 @@
     }
     for (const p of run.pickups) {
       if (p.taken) continue;
-      if (G.circleCircle(b.x, b.y, b.r + 2, p.x, p.y, p.kind==='shield'?15:12)) {
+      if (G.circleCircle(b.x, b.y, b.r + 2, p.x, p.y, p.kind==='shield'?15:p.kind==='coin' && !run.job && run.practiceIndex===null ? 12+profile.magnet*6 : 12)) {
         p.taken=true;
         if(p.kind==='mailbag'){run.parcels++;Music.play('coin');}
-        if(p.kind==='coin'){run.picked++;Music.play('coin');}
+        if(p.kind==='coin'){
+          run.picked++;Music.play('coin');
+          if(!run.job && run.practiceIndex===null){
+            run.combo=run.elapsed-run.lastCoin<=5 ? run.combo+1 : 1;run.lastCoin=run.elapsed;
+            if(run.combo%3===0){run.comboCoins+=6;banner={text:'Cadena de '+run.combo+' · +6 monedas',until:clock+1.3};}
+          }
+        }
         if(p.kind==='star'){run.stars++;Music.play('star');banner={text:'+1 estrella',until:clock+.8};}
         if(p.kind==='shield'){run.shield=1;Music.play('shield');banner={text:'¡ESCUDO!',until:clock+.8};}
         emit(p.x,p.y+run.camera,p.kind==='star'?'#ffcf5a':p.kind==='shield'?'#6feefe':'#ffd873',16);
@@ -497,6 +528,32 @@
     const goal=run.job.id==='post' ? run.parcels+'/'+run.job.target+' sacas' : run.score+'/'+run.job.target+' m';
     return goal+' · '+Math.max(0,Math.ceil(run.job.limit-run.elapsed))+' s';
   }
+  function passport(){
+    const rank=G.league(profile.xp), day=profile.stamps%7;
+    const available=G.dayNumber()>profile.claimDay;
+    return `<section class="settings-screen"><header class="page-header"><button class="back-btn" data-action="menu" aria-label="Volver">${icon('back')}</button><h1>Pasaporte</h1></header>
+      <article class="league-card" data-metal="${Math.floor(rank.tier/3)}">${icon('trophy')}<h2>${rank.name}</h2><p>${profile.xp} XP · ${rank.next?'Próximo ascenso a '+rank.next+' XP':'Liga máxima'}</p>
+      <progress value="${profile.xp-rank.floor}" max="${(rank.next??profile.xp+1)-rank.floor}"></progress></article>
+      <article class="settings-card"><h2>Sellos de estación</h2><p>Un sello por día. Puedes continuar la colección aunque descanses varios días.</p>
+      <div class="stamps">${G.DAILY.map((reward,i)=>`<span class="${i<day?'stamped':''}">${icon(i<day?'star':'coin')}<b>${reward}</b></span>`).join('')}</div>
+      <button class="btn btn-green" data-action="daily" ${available?'':'disabled'}>${available?'Recoger '+G.DAILY[day]+' monedas':'Premio de hoy recogido'}</button></article>
+      <p role="status">${notice}</p></section>`;
+  }
+  function mobileHome(){
+    const rank=G.league(profile.xp);
+    return `<section class="station-home"><header><span>Wall Bounce</span><b>${coinIcon()} ${profile.coins}</b></header>
+      <div class="platform"><div><small>Estación de salida</small><h1>Jardines<br>del aire</h1></div><img src="${ballSrc(profile.selected)}" alt="Pelota equipada"></div>
+      <button class="btn btn-play" data-action="play">Iniciar ascenso</button>
+      <button class="mobile-rank" data-action="passport">${icon('trophy')}<span><small>Mi pasaporte</small><b>${rank.name}</b></span><em>${G.dayNumber()>profile.claimDay?'Premio disponible':profile.xp+' XP'}</em></button>
+      <div class="station-options"><button data-action="jobs">${icon('mailbag')}Encargos</button><button data-action="route">${icon('missions')}Practicar ruta</button></div>
+      <p class="station-record">Récord personal · ${profile.high} m</p>${storageError?`<p>${storageError}</p>`:''}</section>`;
+  }
+  function gearShop(){
+    return [['magnet','coin','Imán de monedas','Amplía la distancia de recogida en el ascenso.','Nivel '+profile.magnet+'/3'],['ticket','shield','Billete de escudo','Protege de un golpe en el próximo ascenso.','Reserva '+profile.tickets+'/5']].map(([id,art,name,desc,stock])=>{
+      const cost=G.price(profile,id);
+      return `<article class="trail-row">${icon(art)}<div class="trail-data"><b>${name}</b><small>${desc} · ${stock}</small></div><button class="trail-action" data-action="gear" data-id="${id}" ${cost===null||profile.coins<cost?'disabled':''}>${cost===null?'Completo':cost+' '+coinIcon()}</button></article>`;
+    }).join('');
+  }
   function ballSrc(id){return `assets/balls/${id}.png`;}
   function icon(name){return `<img class="art-icon" src="assets/${name}.png" alt="">`;}
   function coinIcon(){return '<img class="coin-icon" src="assets/coin.png" alt="monedas">';}
@@ -509,7 +566,7 @@
     ['settings', '', 'nav-tools', 'Ajustes']
   ];
   function updateDock(){
-    dock.hidden = !['menu','skins','events','settings','route','jobs'].includes(mode);
+    dock.hidden = !['menu','skins','events','settings','route','jobs','passport'].includes(mode);
     if (dock.hidden) return;
     const ready = G.MISSIONS.filter(m => profile[m.stat] >= m.need && !profile.claimed.includes(m.id)).length;
     dock.innerHTML = destinations.map(([action,tab,art,label]) => {
@@ -531,9 +588,12 @@
       <span class="hud-stars">${icon('star')} <b id="hud-stars">${run.stars}</b><img id="hud-shield" src="assets/shield.png" alt="Escudo activo" ${run.shield?'':'hidden'}></span>
       <button class="hud-pause" data-action="pause" aria-label="Pausar partida">${icon('pause')}</button></div>
       ${run.job?`<div class="job-hud" id="job-hud">${jobHud()}</div>`:''}
-      ${run.started?'':'<div class="launch-tip"><b>Toca para dar el primer salto</b><small>Cada toque te impulsa. Rebotas solo en las paredes. También funciona con Espacio.</small></div>'}`;
+      ${native?'<button class="jump-pad" data-action="jump">Impulso</button>':''}
+      ${run.started?'':'<div class="launch-tip"><b>Toca para dar el primer salto</b><small>Cada toque te impulsa. Rebotas solo en las paredes. Elige cuándo subir para esquivar las trampas.</small></div>'}`;
       return;
     }
+    if(mode==='passport'){overlay.innerHTML=passport();return;}
+    if(mode==='menu' && native){overlay.innerHTML=mobileHome();return;}
     if(mode==='menu'){
       const next=G.nextSkin(profile);
       const percentage=next?profile.progress:100;
@@ -591,7 +651,8 @@
       overlay.innerHTML=`<section class="results-screen"><div class="results-wrap">
         <div class="results-head"><span class="kicker">PARTIDA TERMINADA</span><h1>${result.isRecord?'¡NUEVO RÉCORD!':'¡BUEN REBOTE!'}</h1>
          <div class="score-caption">ALTURA ALCANZADA</div><div class="score-number">${result.score} m</div><p class="result-tip">${run.reason}</p></div>
-        <div class="result-rewards"><div><span>${coinIcon()} MONEDAS</span><b>+${result.earned}</b></div>
+        <div class="league-result ${result.climbed?'promoted':''}">${icon('trophy')}<span>${result.climbed?'¡Ascenso a ':''}${G.league(profile.xp).name}</span><b>+${result.xpGain} XP</b></div>
+        <div class="result-rewards">${run.comboCoins?`<small>Incluye ${run.comboCoins} monedas por cadenas</small>`:''}<div><span>${coinIcon()} MONEDAS</span><b>+${result.earned}</b></div>
           <div><span>${icon('trophy')} Récord</span><b>${profile.high}</b></div>
           <div><span>${icon('star')} Estrellas</span><b>+${result.stars}</b></div>
           ${result.eventReward?`<div><span>${icon('chest')} Premio del festival</span><b>+${result.eventReward}</b></div>`:''}</div>
@@ -639,7 +700,7 @@
       <button data-action="eventTab" data-tab="missions" class="${eventTab==='missions'?'active':''}">MISIONES</button>
       <button data-action="eventTab" data-tab="trails" class="${eventTab==='trails'?'active':''}">TIENDA</button></div>
       ${eventTab==='trails'?`<div class="trail-body"><div class="trail-intro">Personaliza la estela de tu pelota con las monedas que ganas jugando. <b>${coinIcon()} ${profile.coins}</b></div>
-      ${G.TRAILS.map(t=>{const owned=profile.trails.includes(t.id),equipped=t.id===profile.selectedTrail;return `<div class="trail-row"><div class="trail-art" style="--t1:${t.colors[0]};--t2:${t.colors[1]}">${icon('star')}</div><div class="trail-data"><b>${t.name}</b><small>${equipped?'EQUIPADA':owned?'CONSEGUIDA':'DISEÑO DE ESTELA'}</small></div><button class="trail-action" data-action="trailBuy" data-trail="${t.id}" ${equipped?'disabled':''}>${equipped?'En uso':owned?'EQUIPAR':t.price+' '+coinIcon()}</button></div>`}).join('')}</div>`:eventTab==='event'?`<div class="event-body"><div class="event-hero"><img src="assets/star.png" alt="estrella dorada">
+      ${gearShop()}${G.TRAILS.map(t=>{const owned=profile.trails.includes(t.id),equipped=t.id===profile.selectedTrail;return `<div class="trail-row"><div class="trail-art" style="--t1:${t.colors[0]};--t2:${t.colors[1]}">${icon('star')}</div><div class="trail-data"><b>${t.name}</b><small>${equipped?'EQUIPADA':owned?'CONSEGUIDA':'DISEÑO DE ESTELA'}</small></div><button class="trail-action" data-action="trailBuy" data-trail="${t.id}" ${equipped?'disabled':''}>${equipped?'En uso':owned?'EQUIPAR':t.price+' '+coinIcon()}</button></div>`}).join('')}</div>`:eventTab==='event'?`<div class="event-body"><div class="event-hero"><img src="assets/star.png" alt="estrella dorada">
       <div><small>FESTIVAL PERMANENTE</small><h2>LLUVIA DE ESTRELLAS</h2><p>Recoge estrellas doradas durante las partidas. Cada 12 estrellas te regalan 80 monedas.</p></div></div>
       <div class="event-counter"><span>HACIA TU PRÓXIMA RECOMPENSA</span><b>${progress}/12</b>
       <div class="progress-track"><i style="width:${progress/12*100}%"></i></div><p>${Math.floor(profile.totalStars/12)} premios conseguidos · ${profile.totalStars} estrellas en total</p></div>
@@ -657,8 +718,7 @@
         <div class="setting-row"><div>Sonidos<small>Saltos, premios y rebotes</small></div><button class="switch ${profile.sound?'on':''}" data-action="sound">${profile.sound?'SÍ':'NO'}</button></div>
         <div class="setting-row"><div>VOLUMEN<small id="volume-value">${Math.round(profile.volume)}%</small></div><input type="range" id="volume-slider" aria-label="Volumen" min="0" max="100" value="${profile.volume}"></div>
         <div class="setting-row"><div>Partículas<small>Efectos visuales</small></div><button class="switch ${profile.reducedFx?'':'on'}" data-action="effects">${profile.reducedFx?'BAJO':'SÍ'}</button></div></div>
-        <div class="data-card"><h2>Tu progreso</h2><p>Las partidas, monedas y pelotas se guardan dentro de <b>Documentos/Wall Bounce</b>.</p>
-        <button class="btn btn-yellow" data-action="folder">Abrir carpeta</button>${storageError?`<p class="save-warning">${storageError}</p>`:''}</div>
+        <div class="data-card"><h2>Tu progreso</h2>${native?`<p>Tu pasaporte y tu colección se guardan en este dispositivo.</p><div class="setting-row"><div>Recordatorio local<small>Un aviso silencioso tras cuatro días sin abrir el juego.</small></div><button class="switch" data-action="reminders" ${permissionBusy?'disabled':''}>${profile.reminders?'SÍ':'NO'}</button></div><small role="status">${notice}</small>`:`<p>Documentos/Wall Bounce</p><button class="btn" data-action="folder">Abrir carpeta</button>`}${storageError?`<p class="save-warning">${storageError}</p>`:''}</div>
         </section>`;return;
     }
   }
@@ -686,7 +746,18 @@
     draw();
     requestAnimationFrame(frame);
   }
-  async function boot(){profile=await loadProfile();inspected=profile.selected;mode='menu';renderUI();}
+  async function refreshReminder(){
+    if(!native || !profile.reminders)return;
+    try{if(!await native.refresh()){profile.reminders=false;saveProfile();}}catch{notice='No se pudo actualizar el recordatorio.';}
+  }
+  window.addEventListener('station-back',()=>{
+    if(mode==='playing'||mode==='pause')pause();
+    else if(mode==='menu')native.exit();
+    else menu();
+  });
+  window.addEventListener('station-active',()=>{refreshReminder();if(['menu','passport'].includes(mode))renderUI();});
+  window.addEventListener('station-sleep',()=>{if(mode==='playing')pause();Music.suspend();});
+  async function boot(){profile=await loadProfile();inspected=profile.selected;mode='menu';renderUI();refreshReminder();}
   renderUI();boot();
   requestAnimationFrame(frame);
 })();

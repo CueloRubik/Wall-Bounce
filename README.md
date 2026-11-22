@@ -1,3 +1,7 @@
+# Edición Android
+
+El proyecto de Capacitor y los comandos de compilación para Windows están en [mobile/README.md](mobile/README.md).
+
 # Wall Bounce 1.2.0 · Electron 28
 
 El cuaderno de ruta permite practicar las ocho estaciones alcanzadas sin gastar monedas ni alterar récords. Los escenarios cambian al llegar al puerto (390 m) y al observatorio (2200 m).
