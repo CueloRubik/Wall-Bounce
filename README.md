@@ -1,6 +1,6 @@
 # Wall Bounce 1.2.0 · Electron 28
 
-El cuaderno de ruta permite practicar las ocho estaciones alcanzadas sin gastar monedas ni alterar récords. Los escenarios cambian al llegar al puerto (750 m) y al observatorio (3350 m).
+El cuaderno de ruta permite practicar las ocho estaciones alcanzadas sin gastar monedas ni alterar récords. Los escenarios cambian al llegar al puerto (390 m) y al observatorio (2200 m).
 
 Juego arcade vertical de **un solo toque**, con controles para ratón, teclado y teléfono, 36 pelotas ilustradas, recompensas por partida y progresión sin misiones para desbloquear las pelotas.
 
@@ -19,10 +19,12 @@ npm start
 
 - **Clic, toque o barra espaciadora**: impulso hacia arriba. La pelota cambia de pared automáticamente.
 - **Pausa**: botón II o tecla Escape. Puedes continuar, reintentar o volver al menú.
-- **Inicio accesible**: velocidad lateral más lenta, espacios amplios y primera plataforma de supersalto. La dificultad aumenta gradualmente según la puntuación, y aparecen nuevos tipos de obstáculo.
+- El primer tramo enseña a esquivar pinchos. Los resortes aparecen desde el taller a los 180 m y protegen la pelota durante 1,85 segundos al lanzarla.
 - **Obstáculos**: pinchos de cristal, bloques, sierras, plataformas móviles, cuchillas y barras de energía.
 - **Ayudas y premios**: plataformas de supersalto, monedas, estrellas y burbujas-escudo que absorben una colisión.
-- **Ambientación**: valle pintado con luz que cambia al subir, animación de giro leve, rebote deformable, estelas coloreadas y partículas.
+- **Ambientación**: valle pintado con luz que cambia al subir, rotación con inercia, rebote deformable, estelas coloreadas y partículas.
+
+El tablón de encargos ofrece dos recorridos fijos. En el Expreso hay que llegar a 780 m en 19 segundos. En Correo de altura hay que recoger tres sacas en 52 segundos. Cada primera entrega paga monedas y el tablón guarda el mejor tiempo de cada recorrido.
 
 ## Progresión
 

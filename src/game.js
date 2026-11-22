@@ -6,7 +6,7 @@
   const overlay = document.querySelector('#overlay');
   const W = 360, H = 640, LEFT = 36, RIGHT = 324;
   const images = {};
-  const assets = ['wall','block','saw','coin','spikes-left','spikes-right','spring','star','shield','beam','blade','sky','station','harbor','observatory','moving',
+  const assets = ['mailbag','wall','block','saw','coin','spikes-left','spikes-right','spring','star','shield','beam','blade','sky','station','harbor','observatory','moving',
     ...G.SKINS.map(s => `ball-${s.id}`)];
   assets.forEach(id => {
     const img = new Image();
@@ -75,16 +75,17 @@
     ctx.fillStyle = color;
     ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(w), Math.ceil(h));
   }
-  function startGame(practiceIndex = null) {
+  function startGame(practiceIndex = null, job = null) {
     const startHeight = practiceIndex === null ? 0 : G.ROUTE[practiceIndex].at;
     clock = 0;
     accumulator = 0;
-    rng = G.seeded((Math.random() * 0xFFFFFFFF) >>> 0);
+    rng = G.seeded(job?.seed ?? ((Math.random() * 0xFFFFFFFF) >>> 0));
     run = {
+      job, elapsed:0, parcels:0, lastSpring:-100, nextTap:0, boost:0,
       practiceIndex, startHeight, score: startHeight, picked: 0, stars: 0, shield: 0, wallBounces: 0, avoided: 0,
       balls: [], obstacles: [], pickups: [], particles: [],
       lastHeight: startHeight, started: false, nextY: 220, spawned: 0, camera: 0, shake: 0, flash: 0,
-      ball: {x: 176, y: 488, vx: 137, vy: -125, r: 12, inv: 1.3, trail: [], angle: 0, impact: 0}
+      ball: {x: 176, y: 488, vx: 122, vy: -125, r: 12, inv: 1.3, trail: [], angle: 0, spin: 0, impact: 0}
     };
     while (run.nextY > -140) spawnObstacle();
     banner = null;
@@ -98,11 +99,17 @@
     const height = run.startHeight + (488 - run.nextY) / 5;
     const firstPractice = run.practiceIndex !== null && run.spawned === 0;
     const o = G.obstacle(rng, firstPractice ? 1 : run.spawned, run.nextY, height,
-      firstPractice ? run.startHeight - 1 : run.lastHeight);
+      firstPractice ? run.startHeight - 1 : run.lastHeight, run.lastSpring);
+    if(o.type==='spring')run.lastSpring=run.spawned;
     run.lastHeight = height;
     run.obstacles.push(o);
-    const kind = run.spawned % 11 === 9 ? 'shield' : run.spawned % 4 === 2 ? 'star' : 'coin';
-    run.pickups.push({kind, x: G.pickupLane(o,rng), y: o.y + 128, taken: false});
+    const kind = run.job?.id==='post' && run.spawned%3!==2 ? 'mailbag' : run.spawned % 11 === 9 ? 'shield' : run.spawned % 4 === 2 ? 'star' : 'coin';
+    const lane=G.pickupLane(o,rng);
+    run.pickups.push({kind,x:lane,y:o.y+118,taken:false});
+    if(kind==='coin' && run.spawned%3===1){
+      const approach=lane+(180-lane)*.45;
+      run.pickups.push({kind:'coin',x:approach,y:o.y+174,taken:false});
+    }
     run.nextY -= G.gapFor(height,rng);
     run.spawned++;
   }
@@ -142,8 +149,9 @@
       run.started = true;
       document.querySelector('.launch-tip')?.remove();
     }
+    if(run.elapsed + 1e-6 < run.nextTap)return;
+    run.nextTap=run.elapsed+.24;
     b.vy = Math.min(b.vy, -376);
-    b.angle += (b.vx > 0 ? .18 : -.18);
     emit(b.x, b.y + run.camera, '#be88ff', 9, 82);
     Music.play('jump');
   }
@@ -156,7 +164,7 @@
     if (['Space','ArrowUp','Escape'].includes(event.code) && ['playing','pause','menu'].includes(mode)) event.preventDefault();
     if (event.code === 'Escape') {
       if (mode === 'playing' || mode === 'pause') pause();
-      else if (mode === 'skins' || mode === 'settings' || mode === 'unlocked' || mode === 'events' || mode === 'route' || mode === 'practiceEnd') menu();
+      else if (mode === 'skins' || mode === 'settings' || mode === 'unlocked' || mode === 'events' || mode === 'route' || mode === 'practiceEnd' || mode === 'jobs' || mode === 'jobEnd') menu();
     } else if ((event.code === 'Space' || event.code === 'ArrowUp') && !event.repeat) {
       if (mode === 'playing') impulse();
       else if (mode === 'menu') startGame();
@@ -171,7 +179,9 @@
     Music.activate(mode,profile.music,profile.volume,profile.sound);
     const action=button.dataset.action;
     if(action==='play')startGame();
-    else if(action==='retry')startGame(run?.practiceIndex ?? null);
+    else if(action==='retry')startGame(run?.practiceIndex ?? null,run?.job ?? null);
+    else if(action==='jobs'){run=null;mode='jobs';renderUI();}
+    else if(action==='job'){const job=G.JOBS.find(j=>j.id===button.dataset.id);if(job)startGame(null,job);}
     else if(action==='route'){mode='route';renderUI();}
     else if(action==='practice'){
       const index=Number(button.dataset.index);
@@ -225,6 +235,16 @@
     const x = o.type==='moving' ? o.x+Math.sin(clock*o.speed+o.phase)*o.amp : o.x;
     return hits(o.type,x);
   }
+  function finishJob(won,reason){
+    run.reason=reason;
+    run.won=won;
+    run.reward=0;
+    if(won){
+      const outcome=G.settleJob(profile,run.job,run.elapsed);
+      profile=outcome.profile;run.reward=outcome.reward;saveProfile();
+    }
+    mode='jobEnd';Music.play(won?'unlock':'hit');renderUI();
+  }
   function finish(reason) {
     if (mode !== 'playing' || !run) return;
     const b = run.ball;
@@ -232,6 +252,7 @@
     run.shake = 9;
     run.flash = .15;
     run.reason=reason;
+    if(run.job){finishJob(false,reason);return;}
     if(run.practiceIndex!==null){
       mode='practiceEnd';Music.play('hit');renderUI();return;
     }
@@ -261,17 +282,21 @@
     run.particles = run.particles.filter(p => p.life > 0).slice(-180);
     if (mode !== 'playing' || !run.started) return;
     const b = run.ball;
+    run.elapsed+=dt;
+    run.boost=Math.max(0,run.boost-dt);
+    if(run.job && run.elapsed>run.job.limit+1e-6){finishJob(false,'Se acabó el tiempo.');return;}
     b.inv = Math.max(0, b.inv - dt);
     b.impact = Math.max(0, (b.impact || 0) - dt * 8);
-    const speed = 137 + Math.min(55, run.score * .024);
-    b.vx = Math.sign(b.vx || 1) * speed;
+    const speed = 152 + Math.min(52, run.score * .041);
+    b.vx = Math.sign(b.vx || 1) * Math.min(speed,Math.abs(b.vx)+58*dt);
     b.vy = Math.min(270, b.vy + 515 * dt);
-    b.angle += dt * (b.vx > 0 ? 1.45 : -1.45);
+    G.roll(b,dt);
     const previousX = b.x;
     const previousY = b.y;
     b.x += b.vx * dt;
     b.y += b.vy * dt;
     if (G.reflectWall(b, LEFT, RIGHT)) {
+      b.vx*=.94;
       run.wallBounces++;
       b.impact = 1;
       emit(b.x, b.y + run.camera, '#63ecff', 11);
@@ -298,11 +323,11 @@
         const surface=o.y+5;
         if (!o.used && b.vy>0 && previousY+b.r<=surface && b.y+b.r>=surface &&
             b.x+b.r>o.x+5 && b.x-b.r<o.x+o.w-5){
-          o.used=true;o.hitAt=clock;b.y=surface-b.r;b.vy=-480;
+          o.used=true;o.hitAt=clock;b.y=surface-b.r;b.vy=-835;run.boost=1.85;
           emit(b.x,b.y+run.camera,'#adf7fc',18,85);
-          Music.play('spring');banner={text:'¡SUPERSALTO!',until:clock+1.0};
+          Music.play('spring');banner={text:'Lanzamiento protegido',until:clock+1.0};
         }
-      } else if (b.inv <= 0) {
+      } else if (b.inv <= 0 && run.boost <= 0) {
         for (let i = 1; i <= steps; i++) {
           const sample = {x: previousX + (b.x - previousX) * i / steps,
             y: previousY + (b.y - previousY) * i / steps, r: b.r};
@@ -327,6 +352,7 @@
       if (p.taken) continue;
       if (G.circleCircle(b.x, b.y, b.r + 2, p.x, p.y, p.kind==='shield'?15:12)) {
         p.taken=true;
+        if(p.kind==='mailbag'){run.parcels++;Music.play('coin');}
         if(p.kind==='coin'){run.picked++;Music.play('coin');}
         if(p.kind==='star'){run.stars++;Music.play('star');banner={text:'+1 estrella',until:clock+.8};}
         if(p.kind==='shield'){run.shield=1;Music.play('shield');banner={text:'¡ESCUDO!',until:clock+.8};}
@@ -335,6 +361,13 @@
         const stars=document.getElementById('hud-stars');if(stars)stars.textContent=`${run.stars}`;
         const shield=document.getElementById('hud-shield');if(shield)shield.hidden=!run.shield;
       }
+    }
+    if(run.job){
+      const progress=run.job.id==='post' ? run.parcels : run.score;
+      if(progress>=run.job.target){finishJob(true,'Encargo entregado');return;}
+      const readout=document.getElementById('job-hud');
+      const message=jobHud();
+      if(readout && readout.textContent!==message)readout.textContent=message;
     }
     const tail = b.trail[0];
     if (!tail || Math.hypot(b.x-tail.x,b.y-tail.y)>=5) b.trail.unshift({x:b.x,y:b.y});
@@ -347,7 +380,7 @@
   function drawBackground() {
     const offset=run ? run.camera : 0;
     rect(0,0,W,H,'#ecd8b5');
-    const backdrop= !run ? 'station' : run.score>=3350 ? 'observatory' : run.score>=750 ? 'harbor' : 'sky';
+    const backdrop= !run ? 'station' : run.score>=2200 ? 'observatory' : run.score>=390 ? 'harbor' : 'sky';
     const bg=asset(backdrop)||asset('sky');
     if(bg)ctx.drawImage(bg,0,-40+Math.min(40,offset*.012),W,H+40);
     if (!run) return;
@@ -393,7 +426,7 @@
       ctx.save();
       const impact = run && mode === 'playing' ? (run.ball.impact || 0) : 0;
       ctx.translate(Math.round(x),Math.round(y));
-      ctx.rotate(run && mode === 'playing' ? Math.sin(run.ball.angle) * .14 : Math.sin(clock*.8)*.05);
+      ctx.rotate(run ? run.ball.angle : 0);
       ctx.scale(1+impact*.16,1-impact*.13);
       ctx.drawImage(img,-s/2,-s/2,s,s);
       ctx.restore();
@@ -414,7 +447,7 @@
       for (const p of run.pickups) {
         if (!p.taken && p.y + cam > -20 && p.y + cam < H + 20) {
           const yy = p.y + cam + Math.sin(clock * 5 + p.x) * 3;
-          sprite(p.kind==='star'?'star':p.kind==='shield'?'shield':'coin',p.x-13,yy-13,26,26);
+          sprite(p.kind,p.x-13,yy-13,26,26);
         }
       }
       const b = run.ball;
@@ -430,7 +463,11 @@
             if(spark)ctx.drawImage(spark,item.x-size/2,item.y+cam-size/2,size,size*.8);
           });ctx.globalAlpha=1;
         }
-        if (!run.started || b.inv <= 0 || Math.floor(clock * 8) % 2 === 0) {
+        if(run.boost>0){
+          ctx.save();ctx.globalAlpha=.74;ctx.strokeStyle=run.boost<.35?'#ffd472':'#85efdf';ctx.lineWidth=2;ctx.beginPath();ctx.arc(Math.round(b.x),Math.round(b.y+cam),20,0,Math.PI*2);ctx.stroke();ctx.restore();
+          sprite('shield',b.x+10,b.y+cam-21,14,14);
+        }
+        if (run.boost>0 || !run.started || b.inv <= 0 || Math.floor(clock * 8) % 2 === 0) {
           drawBall(b.x, b.y + cam, `ball-${profile.selected}`);
         }
       }
@@ -456,6 +493,10 @@
       ctx.fillText(banner.text,180,109,285);
     }
   }
+  function jobHud(){
+    const goal=run.job.id==='post' ? run.parcels+'/'+run.job.target+' sacas' : run.score+'/'+run.job.target+' m';
+    return goal+' · '+Math.max(0,Math.ceil(run.job.limit-run.elapsed))+' s';
+  }
   function ballSrc(id){return `assets/balls/${id}.png`;}
   function icon(name){return `<img class="art-icon" src="assets/${name}.png" alt="">`;}
   function coinIcon(){return '<img class="coin-icon" src="assets/coin.png" alt="monedas">';}
@@ -468,7 +509,7 @@
     ['settings', '', 'nav-tools', 'Ajustes']
   ];
   function updateDock(){
-    dock.hidden = !['menu','skins','events','settings','route'].includes(mode);
+    dock.hidden = !['menu','skins','events','settings','route','jobs'].includes(mode);
     if (dock.hidden) return;
     const ready = G.MISSIONS.filter(m => profile[m.stat] >= m.need && !profile.claimed.includes(m.id)).length;
     dock.innerHTML = destinations.map(([action,tab,art,label]) => {
@@ -489,6 +530,7 @@
       <div class="hud-score"><small id="hud-zone">${run.practiceIndex!==null?'Práctica · ':''}${G.stageAt(run.score).name}</small><strong><span id="hud-score">${run.score}</span> m</strong></div>
       <span class="hud-stars">${icon('star')} <b id="hud-stars">${run.stars}</b><img id="hud-shield" src="assets/shield.png" alt="Escudo activo" ${run.shield?'':'hidden'}></span>
       <button class="hud-pause" data-action="pause" aria-label="Pausar partida">${icon('pause')}</button></div>
+      ${run.job?`<div class="job-hud" id="job-hud">${jobHud()}</div>`:''}
       ${run.started?'':'<div class="launch-tip"><b>Toca para dar el primer salto</b><small>Cada toque te impulsa. Rebotas solo en las paredes. También funciona con Espacio.</small></div>'}`;
       return;
     }
@@ -506,10 +548,17 @@
         <button class="next-card" data-action="skins"><img src="${ballSrc(next?next.id:profile.selected)}" alt="">
         <span class="next-copy"><small>${next?'PRÓXIMA PELOTA':'COLECCIÓN COMPLETA'}</small><b>${next?next.name:'36 de 36'}</b>
         <span class="progress-track"><i style="width:${percentage}%"></i></span></span><b>${percentage}%</b></button></div>
+        <button class="dispatch" data-action="jobs">${icon('mailbag')}<span>Tablón de encargos<small>Contrarreloj y reparto postal</small></span>${icon('stopwatch')}</button>
         <button class="btn btn-play" data-action="play">Empezar ascenso</button>
 
           ${storageError?`<p class="save-warning">${storageError}</p>`:''}
         </div></section>`;return;
+    }
+    if(mode==='jobs'){
+      overlay.innerHTML=`<section class="route-screen"><header class="page-header"><button class="back-btn" data-action="menu" aria-label="Volver">${icon('back')}</button><h1>Tablón de encargos</h1></header><div class="job-list">${G.JOBS.map(job=>`<article class="job-card"><img src="assets/${job.art}.png" alt=""><div><h2>${job.name}</h2><p>${job.brief}</p><small>${profile.records[job.id]?'Mejor tiempo · '+(profile.records[job.id]/1000).toFixed(1)+' s':'Primera entrega · '+job.reward+' monedas'}</small></div><button class="btn" data-action="job" data-id="${job.id}">Aceptar encargo</button></article>`).join('')}</div></section>`;return;
+    }
+    if(mode==='jobEnd'){
+      overlay.innerHTML=`<div class="screen-shade"><section class="modal-card"><img class="job-stamp" src="assets/${run.job.art}.png" alt=""><h1>${run.won?'¡Entrega a tiempo!':'Encargo pendiente'}</h1><p>${run.job.name} · ${run.elapsed.toFixed(1)} s<br>${run.reason}${run.reward?' · +'+run.reward+' monedas':''}</p><div class="stack"><button class="btn btn-green" data-action="retry">Reintentar</button><button class="btn" data-action="jobs">Volver al tablón</button></div></section></div>`;return;
     }
     if(mode==='route'){
       const art={spring:'spring',spike:'spikes-left',double:'spikes-right'};
