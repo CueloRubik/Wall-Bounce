@@ -18,7 +18,12 @@ async function planReminder(){
   when.setDate(when.getDate()+4);
   when.setHours(17,0,0,0);
   await LocalNotifications.cancel({notifications:[{id:reminderId}]});
-  await LocalNotifications.createChannel({id:'station',name:'Noticias de la estación',importance:2,vibration:false});
+  try{
+    await LocalNotifications.createChannel({id:'station',name:'Noticias de la estación',importance:2,vibration:false});
+  }catch(error){
+    // Android 7 delivers silent notifications without notification channels.
+    if(error.code!=='UNAVAILABLE')throw error;
+  }
   await LocalNotifications.schedule({notifications:[{id:reminderId,silent:true,isExactNotification:false,channelId:'station',title:'Wall Bounce',body:'Tu próxima ruta y el premio del día están en la estación.',schedule:{at:when}}]});
 }
 let notificationQueue=Promise.resolve();
