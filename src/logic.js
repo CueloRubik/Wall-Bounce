@@ -1,15 +1,15 @@
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.WallBounceLogic=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
 'use strict';
 const rows=[['classic','Sonrisas','#fff0f8'],['cat','Michi','#ffaf86'],['bee','Abejita','#ffcc49'],['donut','Dona','#fa8dc7'],['basketball','Canasta','#f69a51'],['bunny','Conejita','#ffc1e2'],['frog','Ranita','#86d95e'],['citrus','Naranja','#ffc257'],['flower','Sakura','#ff9dc6'],['robot','Robito','#9dd8ff'],['pumpkin','Calabaza','#ffad6a'],['planet','Saturno','#a5a6f9'],['snow','Copito','#b0eaff'],['heart','Amorcito','#fb81b1'],['crown','Rey Sol','#f7ce55'],['dragon','Dragón','#71d2ad'],['ninja','Ninja','#a1add1'],['cherry','Cerecitas','#fd7799'],['cloud','Nubecita','#bbdafa'],['flame','Llamita','#ff955c'],['koi','Koi','#ffbfab'],['strawberry','Fresita','#fc6d8a'],['cosmic','Galaxia','#a987f4'],['ocean','Océano','#63d3f7'],['arcade','Arcade','#62cafa'],['kiwi','Kiwi','#b7d36a'],['moon','Lunita','#ffe0a4'],['crystal','Amatista','#d5a5ff'],['prism','Prisma','#9aefff'],['circuit','Cibernética','#65cfe8'],['sun','Solecito','#ffdc70'],['candy','Caramelo','#ebba96'],['clover','Trébol','#8ad685'],['rocket','Cohetito','#ff9ab5'],['jelly','Gelatina','#9ba8fa'],['fox','Zorrito','#ffbc83']];
-const TRAILS=Object.freeze([{id:'original',name:'Destellos',price:0,colors:['#c584ed','#72e3f6']},{id:'mint',name:'Menta fresca',price:120,colors:['#67d5c6','#b3ffe9']},{id:'rose',name:'Cereza brillante',price:200,colors:['#ff72bb','#ffe0e7']},{id:'sun',name:'Chispas doradas',price:350,colors:['#ffc96c','#fff4aa']},{id:'galaxy',name:'Polvo galáctico',price:550,colors:['#8177dc','#e7acfa']}]);
+const TRAILS=Object.freeze([{id:'original',name:'Destellos',price:0,colors:['#c584ed','#72e3f6']},{id:'mint',name:'Menta fresca',price:120,colors:['#67d5c6','#b3ffe9']},{id:'rose',name:'Cereza brillante',price:200,colors:['#ff72bb','#ffe0e7']},{id:'sun',name:'Chispas doradas',price:350,colors:['#ffc96c','#fff4aa']},{id:'galaxy',name:'Polvo galáctico',price:550,colors:['#8177dc','#e7acfa']},{id:'aurora',name:'Aurora boreal',price:270,colors:['#69d8ac','#9a8de7']},{id:'ember',name:'Brasas',price:390,colors:['#f28b43','#f7d6a0']},{id:'ice',name:'Cristales de hielo',price:450,colors:['#83cdeb','#e5f8ff']}]);
 const SKINS=Object.freeze(rows.map(([id,name,color],index)=>Object.freeze({id,name,color,index})));
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));const int=v=>Number.isFinite(v)?Math.floor(clamp(v,0,100000000)):0;
-function freshProfile(){return{version:8,xp:0,stamps:0,claimDay:0,magnet:0,tickets:0,reminders:false,records:{},claimed:[],coins:0,high:0,plays:0,totalScore:0,totalStars:0,totalBounces:0,selected:'classic',trails:['original'],selectedTrail:'original',sound:true,music:true,volume:70,reducedFx:false,nextIndex:1,progress:0,unlocked:['classic']};}
+function freshProfile(){return{version:9,xp:0,stamps:0,claimDay:0,magnet:0,coil:0,tickets:0,dailyJobDay:0,dailyJobBest:0,dailyJobs:0,reminders:false,records:{},claimed:[],coins:0,high:0,plays:0,totalScore:0,totalStars:0,totalBounces:0,selected:'classic',trails:['original'],selectedTrail:'original',sound:true,music:true,volume:70,reducedFx:false,nextIndex:1,progress:0,unlocked:['classic']};}
 function normalizeProfile(raw){const p=freshProfile();if(!raw||typeof raw!=='object'||Array.isArray(raw))return p;
 for(const k of ['coins','high','plays','totalScore','totalStars','totalBounces'])p[k]=int(raw[k]);p.sound=raw.sound!==false;p.music=raw.music!==false;p.volume=Number.isFinite(raw.volume)?clamp(raw.volume,0,100):70;p.reducedFx=raw.reducedFx===true;
 for(const job of JOBS){const ms=int(raw.records?.[job.id]);if(ms>0)p.records[job.id]=ms;}
-for(const key of ['xp','stamps','claimDay'])p[key]=int(raw[key]);
-p.magnet=Math.min(3,int(raw.magnet));p.tickets=Math.min(5,int(raw.tickets));p.reminders=raw.reminders===true;
+for(const key of ['xp','stamps','claimDay','dailyJobDay','dailyJobBest','dailyJobs'])p[key]=int(raw[key]);
+p.magnet=Math.min(3,int(raw.magnet));p.coil=Math.min(2,int(raw.coil));p.tickets=Math.min(5,int(raw.tickets));p.reminders=raw.reminders===true;
 p.claimed=MISSIONS.filter(m=>Array.isArray(raw.claimed)&&raw.claimed.includes(m.id)).map(m=>m.id);
 p.nextIndex=clamp(int(raw.nextIndex)||1,1,SKINS.length);p.progress=p.nextIndex===SKINS.length?100:clamp(int(raw.progress),0,99);p.unlocked=SKINS.slice(0,p.nextIndex).map(s=>s.id);p.selected=p.unlocked.includes(raw.selected)?raw.selected:'classic';p.trails=TRAILS.filter(t=>t.price===0 || (Array.isArray(raw.trails)&&raw.trails.includes(t.id))).map(t=>t.id);p.selectedTrail=p.trails.includes(raw.selectedTrail)?raw.selectedTrail:'original';return p;}
 const DAILY=[20,30,35,45,50,65,100];
@@ -22,6 +22,15 @@ function league(xp){
  let tier=0;
  while(tier+1<thresholds.length && points>=thresholds[tier+1])tier++;
  return {tier,name:LEAGUES[Math.floor(tier/3)]+' '+DIVISIONS[tier%3],floor:thresholds[tier],next:thresholds[tier+1]??null};
+}
+function xpLevel(xp){
+ const points=int(xp),level=Math.floor((1+Math.sqrt(1+8*points/45))/2);
+ const floor=45*(level-1)*level/2,next=45*level*(level+1)/2;
+ return {level,floor,next,progress:Math.floor(100*(points-floor)/(next-floor))};
+}
+function rankProgress(xp){
+ const r=league(xp);
+ return r.next===null?100:Math.floor(100*(int(xp)-r.floor)/(r.next-r.floor));
 }
 function dayNumber(now=new Date()){
  return Math.floor(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate())/86400000);
@@ -36,13 +45,14 @@ function claimDaily(old,day){
 function price(p,id){
  if(id==='magnet' && p.magnet<3)return [90,190,320][p.magnet];
  if(id==='ticket' && p.tickets<5)return 50;
+ if(id==='coil' && p.coil<2)return [180,300][p.coil];
  return null;
 }
 function buyGear(old,id){
  const p=normalizeProfile(old), cost=price(p,id);
  if(cost===null || p.coins<cost)return {profile:p,success:false};
  p.coins-=cost;
- if(id==='magnet')p.magnet++;else p.tickets++;
+ if(id==='magnet')p.magnet++;else if(id==='coil')p.coil++;else p.tickets++;
  return {profile:p,success:true};
 }
 function nextSkin(p){p=normalizeProfile(p);return p.nextIndex>=SKINS.length?null:SKINS[p.nextIndex];}
@@ -82,8 +92,30 @@ const JOBS = [
  {id:'express',name:'Expreso del valle',art:'stopwatch',target:780,limit:19,reward:65,seed:711,brief:'Alcanza 780 m en 19 segundos.'},
  {id:'post',name:'Correo de altura',art:'mailbag',target:3,limit:52,reward:90,seed:835,brief:'Recoge tres sacas de correo en 52 segundos.'}
 ];
+const DAILY_ROUTES=[
+ {kind:'height',name:'Mirador del día',art:'stopwatch',target:380,limit:32,reward:45,brief:'Alcanza 380 m en 32 segundos.'},
+ {kind:'parcels',name:'Correo del día',art:'mailbag',target:2,limit:42,reward:45,brief:'Recoge dos sacas en 42 segundos.'},
+ {kind:'bounces',name:'Rebotes del día',art:'missions',target:9,limit:36,reward:45,brief:'Completa nueve rebotes de pared en 36 segundos.'}
+];
+function dailyJob(day){
+ if(!Number.isInteger(day)||day<1||day>100000000)return null;
+ return {...DAILY_ROUTES[day%DAILY_ROUTES.length],id:'daily',day,seed:Math.imul(day,2654435761)>>>0};
+}
+function jobProgress(job,run){
+ return job.kind==='bounces'?int(run.wallBounces):job.kind==='parcels'||job.id==='post'?int(run.parcels):int(run.score);
+}
 function settleJob(profile,job,elapsed){
  const next=normalizeProfile(profile), ms=Math.max(1,Math.round(elapsed*1000));
+ if(job.id==='daily'){
+   const standard=dailyJob(job.day);
+   if(!standard||!Number.isFinite(elapsed)||elapsed<0||elapsed>standard.limit||job.day<next.dailyJobDay)return {profile:next,reward:0};
+   const repeat=next.dailyJobDay===job.day;
+   const reward=repeat?0:standard.reward;
+   next.dailyJobBest=repeat&&next.dailyJobBest?Math.min(next.dailyJobBest,ms):ms;
+   next.dailyJobDay=job.day;
+   if(!repeat){next.dailyJobs++;next.coins+=reward;}
+   return {profile:next,reward};
+ }
  const best=next.records[job.id], reward=best ? 0 : job.reward;
  next.records[job.id]=best ? Math.min(best,ms) : ms;
  next.coins+=reward;
@@ -153,4 +185,4 @@ function reflectWall(ball,left,right){
  if(ball.x<=min && ball.vx<0){ball.x=2*min-ball.x;ball.vx=-ball.vx;return true;}
  return false;
 }
-return{DAILY,league,dayNumber,claimDaily,price,buyGear,JOBS,settleJob,roll,hitsSprite,reflectWall,pickupLane,MISSIONS,claimMission,ROUTE,stageAt,gapFor,SKINS,TRAILS,buyTrail,freshProfile,normalizeProfile,nextSkin,progressFor,payout,gainForRun,applyRun,seeded,obstacle,circleRect,circleCircle,clamp};});
+return{DAILY,league,xpLevel,rankProgress,dayNumber,claimDaily,price,buyGear,JOBS,dailyJob,jobProgress,settleJob,roll,hitsSprite,reflectWall,pickupLane,MISSIONS,claimMission,ROUTE,stageAt,gapFor,SKINS,TRAILS,buyTrail,freshProfile,normalizeProfile,nextSkin,progressFor,payout,gainForRun,applyRun,seeded,obstacle,circleRect,circleCircle,clamp};});

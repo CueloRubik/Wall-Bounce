@@ -105,7 +105,7 @@
     if(o.type==='spring')run.lastSpring=run.spawned;
     run.lastHeight = height;
     run.obstacles.push(o);
-    const kind = run.job?.id==='post' && run.spawned%3!==2 ? 'mailbag' : run.spawned % 11 === 9 ? 'shield' : run.spawned % 4 === 2 ? 'star' : 'coin';
+    const kind = (run.job?.id==='post'||run.job?.kind==='parcels') && run.spawned%3!==2 ? 'mailbag' : run.spawned % 11 === 9 ? 'shield' : run.spawned % 4 === 2 ? 'star' : 'coin';
     const lane=G.pickupLane(o,rng);
     run.pickups.push({kind,x:lane,y:o.y+118,taken:false});
     if(kind==='coin' && run.spawned%3===1){
@@ -156,7 +156,7 @@
       document.querySelector('.launch-tip')?.remove();
     }
     if(run.elapsed + 1e-6 < run.nextTap)return;
-    run.nextTap=run.elapsed+.24;
+    run.nextTap=run.elapsed+(!run.job && run.practiceIndex===null ? .24-profile.coil*.018 : .24);
     b.vy = Math.min(b.vy, -376);
     emit(b.x, b.y + run.camera, '#be88ff', 9, 82);
     Music.play('jump');
@@ -178,13 +178,17 @@
   });
   window.addEventListener('blur', () => { if (mode === 'playing') pause(); Music.suspend(); });
   window.addEventListener('focus', () => { Music.sync(mode,profile.music,profile.volume,profile.sound); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'playing') pause(); });
+  document.addEventListener('visibilitychange', () => { if(document.hidden){if(mode==='playing')pause();Music.suspend();lastFrame=null;} });
+  document.getElementById('shell').addEventListener('pointerdown',event=>{
+    if(!native||!event.isPrimary||!event.target.closest('button[data-action="jump"]'))return;
+    event.preventDefault();Music.activate(mode,profile.music,profile.volume,profile.sound);impulse();
+  });
   document.getElementById('shell').addEventListener('click',event=>{
     const button=event.target.closest('button[data-action]');if(!button)return;
     event.stopPropagation();
     Music.activate(mode,profile.music,profile.volume,profile.sound);
     const action=button.dataset.action;
-    if(action==='jump'){impulse();return;}
+    if(action==='jump'){if(!native||event.detail===0)impulse();return;}
     if(action==='daily'){
       const claim=G.claimDaily(profile,G.dayNumber());profile=claim.profile;
       if(claim.reward){notice='Sello recibido · +'+claim.reward+' monedas';saveProfile();Music.play('coin');}
@@ -206,7 +210,7 @@
     if(action==='play')startGame();
     else if(action==='retry')startGame(run?.practiceIndex ?? null,run?.job ?? null);
     else if(action==='jobs'){run=null;mode='jobs';renderUI();}
-    else if(action==='job'){const job=G.JOBS.find(j=>j.id===button.dataset.id);if(job)startGame(null,job);}
+    else if(action==='job'){const job=button.dataset.id==='daily'&&native?G.dailyJob(G.dayNumber()):G.JOBS.find(j=>j.id===button.dataset.id);if(job)startGame(null,job);}
     else if(action==='route'){mode='route';renderUI();}
     else if(action==='practice'){
       const index=Number(button.dataset.index);
@@ -394,7 +398,7 @@
       }
     }
     if(run.job){
-      const progress=run.job.id==='post' ? run.parcels : run.score;
+      const progress=G.jobProgress(run.job,run);
       if(progress>=run.job.target){finishJob(true,'Encargo entregado');return;}
       const readout=document.getElementById('job-hud');
       const message=jobHud();
@@ -525,31 +529,31 @@
     }
   }
   function jobHud(){
-    const goal=run.job.id==='post' ? run.parcels+'/'+run.job.target+' sacas' : run.score+'/'+run.job.target+' m';
+    const goal=G.jobProgress(run.job,run)+'/'+run.job.target+(run.job.kind==='bounces'?' rebotes':run.job.kind==='parcels'||run.job.id==='post'?' sacas':' m');
     return goal+' · '+Math.max(0,Math.ceil(run.job.limit-run.elapsed))+' s';
   }
   function passport(){
-    const rank=G.league(profile.xp), day=profile.stamps%7;
+    const rank=G.league(profile.xp), level=G.xpLevel(profile.xp), day=profile.stamps%7;
     const available=G.dayNumber()>profile.claimDay;
     return `<section class="settings-screen"><header class="page-header"><button class="back-btn" data-action="menu" aria-label="Volver">${icon('back')}</button><h1>Pasaporte</h1></header>
       <article class="league-card" data-metal="${Math.floor(rank.tier/3)}">${icon('trophy')}<h2>${rank.name}</h2><p>${profile.xp} XP · ${rank.next?'Próximo ascenso a '+rank.next+' XP':'Liga máxima'}</p>
-      <progress value="${profile.xp-rank.floor}" max="${(rank.next??profile.xp+1)-rank.floor}"></progress></article>
+      <progress aria-label="Progreso de liga" value="${G.rankProgress(profile.xp)}" max="100"></progress><p class="rank-level">Nivel ${level.level} · ${profile.dailyJobs} rutas del día completadas</p><progress aria-label="Progreso de nivel" value="${level.progress}" max="100"></progress><small>${profile.xp-level.floor} / ${level.next-level.floor} XP del nivel</small></article>
       <article class="settings-card"><h2>Sellos de estación</h2><p>Un sello por día. Puedes continuar la colección aunque descanses varios días.</p>
       <div class="stamps">${G.DAILY.map((reward,i)=>`<span class="${i<day?'stamped':''}">${icon(i<day?'star':'coin')}<b>${reward}</b></span>`).join('')}</div>
       <button class="btn btn-green" data-action="daily" ${available?'':'disabled'}>${available?'Recoger '+G.DAILY[day]+' monedas':'Premio de hoy recogido'}</button></article>
       <p role="status">${notice}</p></section>`;
   }
   function mobileHome(){
-    const rank=G.league(profile.xp);
+    const rank=G.league(profile.xp),level=G.xpLevel(profile.xp),next=G.nextSkin(profile);
     return `<section class="station-home"><header><span>Wall Bounce</span><b>${coinIcon()} ${profile.coins}</b></header>
       <div class="platform"><div><small>Estación de salida</small><h1>Jardines<br>del aire</h1></div><img src="${ballSrc(profile.selected)}" alt="Pelota equipada"></div>
       <button class="btn btn-play" data-action="play">Iniciar ascenso</button>
-      <button class="mobile-rank" data-action="passport">${icon('trophy')}<span><small>Mi pasaporte</small><b>${rank.name}</b></span><em>${G.dayNumber()>profile.claimDay?'Premio disponible':profile.xp+' XP'}</em></button>
-      <div class="station-options"><button data-action="jobs">${icon('mailbag')}Encargos</button><button data-action="route">${icon('missions')}Practicar ruta</button></div>
+      <button class="mobile-rank" data-action="passport">${icon('trophy')}<span><small>Nivel ${level.level} · Mi pasaporte</small><b>${rank.name}</b><span class="rank-meter"><i style="width:${G.rankProgress(profile.xp)}%"></i></span></span><em>${G.dayNumber()>profile.claimDay?'Premio disponible':profile.xp+' XP'}</em></button>
+      <div class="station-options"><button data-action="jobs">${icon('mailbag')}<span>Encargos<small>Ruta del día</small></span></button><button data-action="route">${icon('missions')}<span>Practicar<small>Selecciona tramo</small></span></button></div><button class="station-collection" data-action="skins"><img src="${ballSrc(next?next.id:profile.selected)}" alt=""><span><small>${next?'Próxima pelota':'Colección completa'}</small><b>${next?next.name:profile.unlocked.length+' de '+G.SKINS.length}</b><span class="rank-meter"><i style="width:${next?profile.progress:100}%"></i></span></span><strong>${next?profile.progress:100}%</strong></button>
       <p class="station-record">Récord personal · ${profile.high} m</p>${storageError?`<p>${storageError}</p>`:''}</section>`;
   }
   function gearShop(){
-    return [['magnet','coin','Imán de monedas','Amplía la distancia de recogida en el ascenso.','Nivel '+profile.magnet+'/3'],['ticket','shield','Billete de escudo','Protege de un golpe en el próximo ascenso.','Reserva '+profile.tickets+'/5']].map(([id,art,name,desc,stock])=>{
+    return [['magnet','coin','Imán de monedas','Amplía la distancia de recogida en el ascenso.','Nivel '+profile.magnet+'/3'],['ticket','shield','Billete de escudo','Protege de un golpe en el próximo ascenso.','Reserva '+profile.tickets+'/5'],['coil','spring','Bobina de impulso','Reduce un poco la espera entre impulsos normales.','Nivel '+profile.coil+'/2']].map(([id,art,name,desc,stock])=>{
       const cost=G.price(profile,id);
       return `<article class="trail-row">${icon(art)}<div class="trail-data"><b>${name}</b><small>${desc} · ${stock}</small></div><button class="trail-action" data-action="gear" data-id="${id}" ${cost===null||profile.coins<cost?'disabled':''}>${cost===null?'Completo':cost+' '+coinIcon()}</button></article>`;
     }).join('');
@@ -567,6 +571,7 @@
   ];
   function updateDock(){
     dock.hidden = !['menu','skins','events','settings','route','jobs','passport'].includes(mode);
+     document.getElementById('shell').classList.toggle('with-dock',!dock.hidden);
     if (dock.hidden) return;
     const ready = G.MISSIONS.filter(m => profile[m.stat] >= m.need && !profile.claimed.includes(m.id)).length;
     dock.innerHTML = destinations.map(([action,tab,art,label]) => {
@@ -615,7 +620,7 @@
         </div></section>`;return;
     }
     if(mode==='jobs'){
-      overlay.innerHTML=`<section class="route-screen"><header class="page-header"><button class="back-btn" data-action="menu" aria-label="Volver">${icon('back')}</button><h1>Tablón de encargos</h1></header><div class="job-list">${G.JOBS.map(job=>`<article class="job-card"><img src="assets/${job.art}.png" alt=""><div><h2>${job.name}</h2><p>${job.brief}</p><small>${profile.records[job.id]?'Mejor tiempo · '+(profile.records[job.id]/1000).toFixed(1)+' s':'Primera entrega · '+job.reward+' monedas'}</small></div><button class="btn" data-action="job" data-id="${job.id}">Aceptar encargo</button></article>`).join('')}</div></section>`;return;
+      overlay.innerHTML=`<section class="route-screen"><header class="page-header"><button class="back-btn" data-action="menu" aria-label="Volver">${icon('back')}</button><h1>Tablón de encargos</h1></header><div class="job-list">${(native?[G.dailyJob(G.dayNumber()),...G.JOBS]:G.JOBS).filter(Boolean).map(job=>`<article class="job-card ${job.id==='daily'?'daily-route':''}"><img src="assets/${job.art}.png" alt=""><div><h2>${job.name}</h2><p>${job.brief}</p><small>${job.id==='daily'?(profile.dailyJobDay===job.day?'Mejor tiempo · '+(profile.dailyJobBest/1000).toFixed(1)+' s':'Premio al completar · '+job.reward+' monedas'):(profile.records[job.id]?'Mejor tiempo · '+(profile.records[job.id]/1000).toFixed(1)+' s':'Primera entrega · '+job.reward+' monedas')}</small></div><button class="btn" data-action="job" data-id="${job.id}">${job.id==='daily'?'Explorar ruta':'Aceptar encargo'}</button></article>`).join('')}</div></section>`;return;
     }
     if(mode==='jobEnd'){
       overlay.innerHTML=`<div class="screen-shade"><section class="modal-card"><img class="job-stamp" src="assets/${run.job.art}.png" alt=""><h1>${run.won?'¡Entrega a tiempo!':'Encargo pendiente'}</h1><p>${run.job.name} · ${run.elapsed.toFixed(1)} s<br>${run.reason}${run.reward?' · +'+run.reward+' monedas':''}</p><div class="stack"><button class="btn btn-green" data-action="retry">Reintentar</button><button class="btn" data-action="jobs">Volver al tablón</button></div></section></div>`;return;
@@ -651,7 +656,7 @@
       overlay.innerHTML=`<section class="results-screen"><div class="results-wrap">
         <div class="results-head"><span class="kicker">PARTIDA TERMINADA</span><h1>${result.isRecord?'¡NUEVO RÉCORD!':'¡BUEN REBOTE!'}</h1>
          <div class="score-caption">ALTURA ALCANZADA</div><div class="score-number">${result.score} m</div><p class="result-tip">${run.reason}</p></div>
-        <div class="league-result ${result.climbed?'promoted':''}">${icon('trophy')}<span>${result.climbed?'¡Ascenso a ':''}${G.league(profile.xp).name}</span><b>+${result.xpGain} XP</b></div>
+        <div class="league-result ${result.climbed?'promoted':''}">${icon('trophy')}<span>${result.climbed?'¡Ascenso a ':''}${G.league(profile.xp).name}<small>Nivel ${G.xpLevel(profile.xp).level}</small><span class="rank-meter"><i style="width:${G.rankProgress(profile.xp)}%"></i></span></span><b>+${result.xpGain} XP</b></div>
         <div class="result-rewards">${run.comboCoins?`<small>Incluye ${run.comboCoins} monedas por cadenas</small>`:''}<div><span>${coinIcon()} MONEDAS</span><b>+${result.earned}</b></div>
           <div><span>${icon('trophy')} Récord</span><b>${profile.high}</b></div>
           <div><span>${icon('star')} Estrellas</span><b>+${result.stars}</b></div>
@@ -751,12 +756,13 @@
     try{if(!await native.refresh()){profile.reminders=false;saveProfile();}}catch{notice='No se pudo actualizar el recordatorio.';}
   }
   window.addEventListener('station-back',()=>{
-    if(mode==='playing'||mode==='pause')pause();
+    if(mode==='playing')pause();
+    else if(mode==='pause')menu();
     else if(mode==='menu')native.exit();
     else menu();
   });
-  window.addEventListener('station-active',()=>{refreshReminder();if(['menu','passport'].includes(mode))renderUI();});
-  window.addEventListener('station-sleep',()=>{if(mode==='playing')pause();Music.suspend();});
+  window.addEventListener('station-active',()=>{lastFrame=null;refreshReminder();if(['menu','passport','jobs'].includes(mode))renderUI();else Music.sync(mode,profile.music,profile.volume,profile.sound);});
+  window.addEventListener('station-sleep',()=>{if(mode==='playing')pause();Music.suspend();lastFrame=null;});
   async function boot(){profile=await loadProfile();inspected=profile.selected;mode='menu';renderUI();refreshReminder();}
   renderUI();boot();
   requestAnimationFrame(frame);

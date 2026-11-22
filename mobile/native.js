@@ -4,14 +4,27 @@ import {LocalNotifications} from '@capacitor/local-notifications';
 
 document.documentElement.classList.add('handheld');
 const key='wall-bounce-profile', reminderId=401;
+let storageReady=false;
+function validProfile(value){
+ if(value===null)return null;
+ try{const data=JSON.parse(value);return data&&typeof data==='object'&&!Array.isArray(data)?data:null;}catch{return null;}
+}
 window.wallBounceStorage={
   async load(){
     const {value}=await Preferences.get({key});
-    if(value===null)return null;
-    try{return JSON.parse(value);}
-    catch(err){await Preferences.set({key:key+'-recovery',value});throw err;}
+    const primary=validProfile(value);
+    if(primary){storageReady=true;return primary;}
+    const backup=(await Preferences.get({key:key+'-backup'})).value;
+    if(value!==null)await Preferences.set({key:key+'-recovery',value});
+    storageReady=true;
+    return validProfile(backup);
   },
-  save(profile){return Preferences.set({key,value:JSON.stringify(profile)});}
+  async save(profile){
+    if(!storageReady)throw new Error('El almacenamiento aún no está disponible.');
+    const previous=(await Preferences.get({key})).value;
+    if(validProfile(previous))await Preferences.set({key:key+'-backup',value:previous});
+    await Preferences.set({key,value:JSON.stringify(profile)});
+  }
 };
 async function planReminder(){
   const when=new Date();
@@ -24,7 +37,7 @@ async function planReminder(){
     // Android 7 delivers silent notifications without notification channels.
     if(error.code!=='UNAVAILABLE')throw error;
   }
-  await LocalNotifications.schedule({notifications:[{id:reminderId,silent:true,isExactNotification:false,channelId:'station',title:'Wall Bounce',body:'Tu próxima ruta y el premio del día están en la estación.',schedule:{at:when}}]});
+  await LocalNotifications.schedule({notifications:[{id:reminderId,silent:true,isExactNotification:false,channelId:'station',title:'Wall Bounce',body:'La estación está abierta cuando quieras volver.',schedule:{at:when}}]});
 }
 let notificationQueue=Promise.resolve();
 function enqueue(task){
